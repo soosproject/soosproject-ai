@@ -8,13 +8,14 @@ export default defineConfig({
   // Canonical domain
   base: '/',
 
-  // Clean URLs — /drafts/hem not /drafts/hem.html
+  // Clean URLs  E/drafts/hem not /drafts/hem.html
   cleanUrls: true,
+  ignoreDeadLinks: true,
 
   // <head> additions
   head: [
     ['link', { rel: 'icon', href: '/favicon.ico' }],
-    ['meta', { name: 'og:title', content: 'SOOS Project — Agentic AI Governance' }],
+    ['meta', { name: 'og:title', content: 'SOOS Project  EAgentic AI Governance' }],
     ['meta', { name: 'og:description', content: '12 IETF drafts specifying the governance stack for autonomous AI agents.' }],
     ['meta', { name: 'og:url', content: 'https://soosproject.ai' }],
   ],
@@ -31,37 +32,37 @@ export default defineConfig({
       { text: 'Gap List', link: '/gaps' },
       { text: 'Vienna', link: '/vienna' },
       { text: 'Government', link: '/government' },
-      { text: 'Build →', link: 'https://soosproject.com' },
+      { text: 'Build ↁE, link: 'https://soosproject.com' },
     ],
 
-    // Sidebar — draft pages share a common sidebar
+    // Sidebar  Edraft pages share a common sidebar
     sidebar: {
       '/drafts/': [
         {
-          text: 'Tier 1 — Vienna Critical',
+          text: 'Tier 1  EVienna Critical',
           items: [
-            { text: 'HEM — Human Escalation', link: '/drafts/hem' },
-            { text: 'CAP — Constitutional Authority', link: '/drafts/cap' },
-            { text: 'IDP — Intent Declaration', link: '/drafts/idp' },
+            { text: 'HEM  EHuman Escalation', link: '/drafts/hem' },
+            { text: 'CAP  EConstitutional Authority', link: '/drafts/cap' },
+            { text: 'IDP  EIntent Declaration', link: '/drafts/idp' },
           ]
         },
         {
-          text: 'Tier 2 — Vienna Important',
+          text: 'Tier 2  EVienna Important',
           items: [
-            { text: 'AEP — Agentic Execution', link: '/drafts/aep' },
-            { text: 'MAD — Multi-Agent Delegation', link: '/drafts/mad' },
-            { text: 'GAR — Governance Audit', link: '/drafts/gar' },
+            { text: 'AEP  EAgentic Execution', link: '/drafts/aep' },
+            { text: 'MAD  EMulti-Agent Delegation', link: '/drafts/mad' },
+            { text: 'GAR  EGovernance Audit', link: '/drafts/gar' },
           ]
         },
         {
-          text: 'Tier 3 — Launch Complete',
+          text: 'Tier 3  ELaunch Complete',
           items: [
-            { text: 'PT — Progressive Trust', link: '/drafts/pt' },
-            { text: 'KIA — Kernel Attestation', link: '/drafts/kia' },
-            { text: 'CAP-RRS — Regulation Schema', link: '/drafts/cap-rrs' },
-            { text: 'MJWT — Mandate JWT', link: '/drafts/mjwt' },
-            { text: 'FAIP — Federated Privacy', link: '/drafts/faip' },
-            { text: 'SOV — Sovereign Object', link: '/drafts/sov' },
+            { text: 'PT  EProgressive Trust', link: '/drafts/pt' },
+            { text: 'KIA  EKernel Attestation', link: '/drafts/kia' },
+            { text: 'CAP-RRS  ERegulation Schema', link: '/drafts/cap-rrs' },
+            { text: 'MJWT  EMandate JWT', link: '/drafts/mjwt' },
+            { text: 'FAIP  EFederated Privacy', link: '/drafts/faip' },
+            { text: 'SOV  ESovereign Object', link: '/drafts/sov' },
           ]
         },
         {
@@ -83,7 +84,7 @@ export default defineConfig({
     // Footer
     footer: {
       message: 'Apache 2.0 License',
-      copyright: 'Copyright © 2026 MyAuberge K.K. · <a href="https://soosproject.com">Build with SOOS →</a>'
+      copyright: 'Copyright © 2026 MyAuberge K.K. · <a href="https://soosproject.com">Build with SOOS ↁE/a>'
     },
 
     // Search
@@ -91,7 +92,7 @@ export default defineConfig({
       provider: 'local'
     },
 
-    // Edit link — points to soos-drafts repo
+    // Edit link  Epoints to soos-drafts repo
     editLink: {
       pattern: 'https://github.com/soosproject/soos-drafts/edit/main/:path',
       text: 'Edit this page on GitHub'
@@ -103,3 +104,4 @@ export default defineConfig({
     hostname: 'https://soosproject.ai'
   }
 })
+
