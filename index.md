@@ -15,21 +15,21 @@ link: /gaps
 text: SOOS Stack
 link: /stack
 features:
-title: The IETF foundation is solid. Agentic AI moved faster than anyone expected.
+title: "The IETF foundation is solid. Agentic AI moved faster than anyone expected."
 details: "SCITT, WIMSE, CAEP, SSF, VDAF — excellent standards for a world of services and APIs. Nobody designed them for autonomous agents acting on consequential objects: contracts, financial instructions, bookings, medical records. That is not a criticism. It is simply where the technology went next, faster than anyone anticipated. We wrote the narrowest possible specifications to fill those gaps, building on existing IETF work wherever it fits."
-title: Intent Declaration — IDP
+title: "Intent Declaration — IDP"
 details: "No common format exists for what an agent was authorized to do, by whom, with what scope, and for how long. Without verifiable scope, agents cannot safely be given wider authorization."
 link: /drafts/idp
-title: Delegation Chains — MAD + MJWT
+title: "Delegation Chains — MAD + MJWT"
 details: "Multi-agent pipelines pass authority without attenuation, revocation, or propagation guarantees. A compromised sub-agent has no standard containment path."
 link: /drafts/mad
-title: Hard Behavioral Limits — CAP + CAP-RRS
+title: "Hard Behavioral Limits — CAP + CAP-RRS"
 details: "No machine-readable standard exists for what an agent must never do, regardless of instruction. Jurisdiction-specific law as a package import, not a Cedar authoring problem."
 link: /drafts/cap
-title: Human Escalation — HEM
+title: "Human Escalation — HEM"
 details: "When an agent reaches the edge of its authorization, there is no standard protocol for pausing and transferring control to a human principal."
 link: /drafts/hem
-title: Full Session Audit — GAR + AEP
+title: "Full Session Audit — GAR + AEP"
 details: "Existing audit standards do not cover the complete agent session lifecycle — partial completion, revocation state, recovery gates, and achievability. Debugging agent failures should not be reconstruction work."
 link: /drafts/gar
 ---
