@@ -19,6 +19,7 @@ export default defineConfig({
       { text: 'Gap List', link: '/gaps' },
       { text: 'Vienna', link: '/vienna' },
       { text: 'Government', link: '/government' },
+      { text: 'About', link: '/about' },
       { text: 'Build', link: 'https://soosproject.com' },
     ],
     sidebar: {
