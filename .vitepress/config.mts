@@ -25,23 +25,23 @@ description: '12 open protocols that make agentic AI reliable enough to deploy a
     sidebar: {
       '/drafts/': [
         {
-          text: 'Tier 1 - Vienna Critical',
+          text: 'Tier 1 - Identity & Execution',
           items: [
             { text: 'HEM - Human Escalation', link: '/drafts/hem' },
-            { text: 'CAP - Constitutional Authority', link: '/drafts/cap' },
+            { text: 'CAP - AI Prohibition', link: '/drafts/cap' },
             { text: 'IDP - Intent Declaration', link: '/drafts/idp' },
           ]
         },
         {
-          text: 'Tier 2 - Vienna Important',
+          text: 'Tier 2 - Delegation & Audit',
           items: [
             { text: 'AEP - Agentic Execution', link: '/drafts/aep' },
             { text: 'MAD - Multi-Agent Delegation', link: '/drafts/mad' },
-            { text: 'GAR - Governance Audit', link: '/drafts/gar' },
+            { text: 'GAR - Governed Action Record', link: '/drafts/gar' },
           ]
         },
         {
-          text: 'Tier 3 - Launch Complete',
+          text: 'Tier 3 - Policy, Trust & Privacy',
           items: [
             { text: 'PT - Progressive Trust', link: '/drafts/pt' },
             { text: 'KIA - Kernel Attestation', link: '/drafts/kia' },
