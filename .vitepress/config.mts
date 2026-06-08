@@ -2,7 +2,7 @@
 
 export default defineConfig({
   title: 'SOOS Project',
-  description: 'The agentic AI governance stack. 12 IETF drafts specifying the kernel-level protocols for safe autonomous agent deployment.',
+description: '12 open protocols that make agentic AI reliable enough to deploy at enterprise scale. Better control means better software.',
   base: '/',
   cleanUrls: true,
   ignoreDeadLinks: true,
