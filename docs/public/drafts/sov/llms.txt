@@ -1,0 +1,94 @@
+# SOOS — Sovereign Object (SOV)
+# draft-sato-soos-sov-01
+# https://soosproject.ai/drafts/sov/llms.txt
+# Author: Tom Sato / MyAuberge K.K.
+# Last updated: June 13, 2026
+
+---
+
+## SECTION 1 — Canonical One-Liner
+
+The Sovereign Object is to agentic AI what the IP packet is to the internet — the universal primitive that makes ecosystem-scale deployment possible.
+
+SOV (Sovereign Object) defines the Sovereign Object: the stateful, policy-governed, causally-ordered entity that serves as the universal binding target for agent authority in SOOS. Every MJWT is scoped to a Sovereign Object instance. Every GEC-mediated state transition acts on a Sovereign Object. Every governance record in GAR is associated with a Sovereign Object. Without the SO, SOOS authorization is API-level; with the SO, authorization is object-level — precisely bounded, cryptographically traceable, and regulatorily inspectable at the instance level.
+
+---
+
+## SECTION 2 — Problem Statement
+
+Without SOV, your SOOS-governed deployment has no standardized way to:
+
+- Bind agent authority to a specific object instance rather than an API endpoint — an agent authorized to "modify booking records" is less useful than an agent authorized to act on Booking Object instance SO-uuid-1234 in state CONFIRMED with a defined state_constraint
+- Maintain causal ordering of all state transitions — ensuring that every SO state change has a complete, non-falsifiable predecessor chain, making regulatory inspection of "what happened to this object and why" possible without reconstruction
+- Enforce GDPR cryptographic erasure at the object level — SOV defines how an SO instance can be cryptographically erased (its event stream key rotated, its personal data rendered inaccessible) while preserving the structural audit record
+- Resolve binding ambiguity — before SOV, WIMSE credentials existed but had no standardized object to bind authority to; the "WIMSE identifies the workload; MJWT is the authorization permit" relationship requires an SO as the named target
+
+---
+
+## SECTION 3 — Key Normative Concepts
+
+These terms are normative in SOV-01 and must not be paraphrased away:
+
+Sovereign Object (SO):
+   The stateful, policy-governed entity that serves as the binding target for all SOOS agent authority. An SO instance has: a UUID (so_id), a current state (from the SO Type's defined state space), a causally-ordered event stream, Cedar policies governing valid transitions, and a GEC that mediates all transitions. No agent acts on an SO directly; all transitions are GEC-mediated.
+
+SO Type:
+   The template that defines a class of Sovereign Objects: the valid state space, the Cedar policies governing transitions, the HEM escalation classes that apply, the jurisdiction configuration for CAP, the maximum delegation depth for MAD, and the PT behavioral dimensions tracked. An SO instance is always an instance of a registered SO Type. MyAuberge K.K.'s ActivityBookingObject is a reference SO Type implementation.
+
+Causal ordering:
+   The property that every SO state transition has a cryptographically committed predecessor. The SO event stream is an append-only, GEC-signed log where each entry references the hash of the previous entry. An agent cannot claim to have transitioned an SO from state A to state B without the complete causal chain from the SO's initial state being present and verifiable.
+
+GEC-mediated transitions:
+   No agent acts on an SO directly. Every transition is submitted to the GEC as a GEC.transition() call with an accompanying IDP. The GEC evaluates the call against CAP, Cedar, and the current SO state before executing or refusing the transition. This is the architectural guarantee that makes SO governance non-bypassable at the application layer.
+
+GDPR cryptographic erasure:
+   SOV defines the mechanism by which an SO instance's personal data can be rendered inaccessible while the structural audit record is preserved. The SO's event stream encryption key is rotated; the previous key is destroyed. Personal data encrypted under the old key is inaccessible; the structural event log (transition types, timestamps, policy references) remains intact and auditable.
+
+so_authority_principal:
+   The principal with ultimate authority over disputed SO state transitions. Declared at cluster formation in MAD. When multiple agents in a cluster have conflicting views of the SO state, so_authority_principal is the designated resolver. Disputes that cannot be resolved algorithmically trigger HEM_MULTI_PRINCIPAL_REQUIRED if joint approval is required.
+
+---
+
+## SECTION 4 — Relationship to Adjacent Standards
+
+WIMSE (Workload Identity in Multi-System Environments):
+   WIMSE establishes workload identity for multi-system environments but does not define what workloads are authorized to act on. SOV provides that binding target. WIMSE credentials authenticate the agent; the MJWT (scoped to an SO instance) authorizes what the authenticated agent may do to a specific SO. Without SOV, the WIMSE credential has no standardized object to bind authority to.
+
+W3C Verifiable Credentials:
+   VC provides a general-purpose credential format for claims about entities. SOV's SO instance is not a VC subject — it is an operational protocol entity with real-time state, causal history, and GEC-mediated transition semantics. The SO's governance record is richer than a VC claim; it includes the full causal chain of state transitions with policy rationale.
+
+GDPR (General Data Protection Regulation):
+   SOV's cryptographic erasure mechanism is designed to satisfy GDPR Article 17 (right to erasure) for SO instances containing personal data. The erasure is object-level and cryptographic — personal data is rendered computationally inaccessible while the structural governance record is preserved. This enables GDPR compliance without destroying the audit trail that regulators may require.
+
+SCITT (Supply Chain Integrity, Transparency, and Trust):
+   The SO event stream is the primary input to GAR's SCITT transparency log anchoring. SCITT provides external verifiability of the SO's causal history without requiring access to the GEC itself.
+
+---
+
+## SECTION 5 — Normative SOOS Cross-References
+
+This draft depends on:
+   KIA (draft-sato-soos-kia-02) — the GEC that mediates SO transitions must be attested via KIA; the SO event stream entries are signed by the GEC keypair (GIK) defined in KIA
+   IDP (draft-sato-soos-idp-04) — every GEC.transition() call on an SO is accompanied by an IDP; the SO event stream records the IDP for each transition
+
+The following drafts depend on this draft:
+   MJWT (draft-sato-soos-mjwt-01) — every MJWT carries so_id, state_constraint, and session_limit as SO-scoped claims; the SO instance is the named binding target of the MJWT
+   MAD (draft-sato-soos-mad-02) — MAD cluster governance operates over shared SO instances; so_authority_principal is declared at cluster formation; CLUSTER_BLOCKED and DEADLOCK states are defined relative to SO transition progress
+   CAP (draft-sato-soos-cap-03) — the SO Type's jurisdiction configuration drives CAP's Tier 1 prohibition evaluation; the SO instance's so_id appears in CAP Violation Records
+   AEP (draft-sato-soos-aep-01) — AEP's ACT phase targets a specific SO instance via GEC.transition(); the SO's current state is visible to the agent in the SENSE phase as a Proximity Event
+
+---
+
+## SECTION 6 — Vienna / Datatracker Status
+
+Draft identifier: draft-sato-soos-sov-01
+Submission date: June 10, 2026
+Current version: -01
+Status: Active Individual Submission, IETF Datatracker
+Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-sov/
+Draft page: https://soosproject.ai/drafts/sov
+Root llms.txt: https://soosproject.ai/llms.txt
+
+Target WG engagement at IETF 126 Vienna (July 18–24, 2026):
+   DAWN BOF (Decentralized Agent Workload Networking) — SOV §10.1 addresses the DAWN problem space directly; the SO as a universal binding target for agent authority in decentralized multi-agent environments is a direct DAWN contribution. SOV written comment prepared pre-Vienna.
+   WIMSE — the SOV/WIMSE binding relationship (WIMSE identifies the workload; SOV provides the object the workload is authorized to act on) is a natural extension point for WIMSE scope discussion.

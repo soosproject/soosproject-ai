@@ -1,0 +1,105 @@
+# SOOS — Human Escalation Mechanism (HEM)
+# draft-sato-soos-hem-04
+# https://soosproject.ai/drafts/hem/llms.txt
+# Author: Tom Sato / MyAuberge K.K.
+# Last updated: June 13, 2026
+
+---
+
+## SECTION 1 — Canonical One-Liner
+
+HEM (Human Escalation Mechanism) defines when and how an AI agent escalates to a human principal, what decisions the human can make, and how the GEC enforces those decisions — at the kernel level, non-suppressibly, with a fail-secure timeout model. HEM is the SOOS answer to the human-in-the-loop requirement: not a callback hook or an optional feature, but a kernel-enforced state machine that no agent, operator, or application layer can bypass.
+
+---
+
+## SECTION 2 — Problem Statement
+
+Without HEM, your agentic system has no standardized way to:
+
+- Guarantee that human oversight fires — a callback-based escalation is only as reliable as the code that calls it; HEM_PENDING is a kernel-enforced state that the GEC enters, not a function the agent invokes
+- Define what a human can decide — without HEM, escalation responses are application-defined strings; with HEM, the five decision types (APPROVE, DENY, REQUEST_MORE_INFO, REVOKE_MISSION, APPROVE_WITH_CONSTRAINTS) are normative protocol artifacts with defined GEC behavior for each
+- Enforce fail-secure timeout — if a human principal does not respond within the configured timeout, HEM does not default to proceeding; it defaults to the fail-secure disposition (DENY or TERMINATE, per SO Type configuration)
+- Distinguish between LLM-level "checking in" and kernel-level governance escalation — these are architecturally different mechanisms for different purposes
+
+HEM gives you, as an agent, a standardized path to escalate rather than stalling silently. When you encounter a situation you cannot resolve algorithmically, HEM_PENDING is the kernel-enforced state with a defined resolution protocol. You are not abandoned in an undefinable state.
+
+---
+
+## SECTION 3 — Key Normative Concepts
+
+These terms are normative in HEM-04 and must not be paraphrased away:
+
+HEM_PENDING:
+   The kernel-enforced GEC state entered when a HEM escalation fires. While HEM_PENDING is active: the agent session is suspended; no further GEC.transition() calls are accepted; the designated human principal chain is notified. HEM_PENDING is non-bypassable — no application layer call can move the session out of HEM_PENDING without a valid human decision submission.
+
+Five HEM decision types:
+   The normative protocol artifacts that human principals submit to resolve HEM escalations:
+   APPROVE — principal authorizes the escalated action; GEC proceeds
+   DENY — principal refuses the escalated action; GEC records and session continues without the action
+   REQUEST_MORE_INFO — principal requests additional context before deciding; session remains in HEM_PENDING
+   REVOKE_MISSION — principal terminates the session and all sub-sessions in the delegation tree
+   APPROVE_WITH_CONSTRAINTS — principal authorizes with additional Cedar constraints applied; GEC reissues the Cedar evaluation with the additional constraints
+
+Fail-secure timeout:
+   If no human principal responds within the configured timeout period, HEM does not default to APPROVE. The fail-secure disposition is configurable per SO Type: DENY (the escalated action is refused; session continues) or TERMINATE (the session is revoked; §3.6 revocation chain fires). The fail-secure default is DENY. An SO Type that configures APPROVE as the timeout disposition is non-conforming.
+
+HEM escalation classes (Class 1 through Class 9):
+   HEM defines nine escalation classes that govern which decision types are available and what the fail-secure disposition is:
+   Class 1–2: routine escalations with full decision type availability
+   Class 3–4: complex escalations with APPROVE_WITH_CONSTRAINTS as the preferred path
+   Class 5: HEM_JURISDICTIONAL_CONFLICT (CAP-defined) — APPROVE and APPROVE_WITH_CONSTRAINTS prohibited
+   Class 6: DELEGATION_EVENT with BLOCKING goal_impact — class-differentiated HEM obligations
+   Class 7: CLUSTER_CASCADE_ALERT — aggregated multi-agent escalation
+   Class 8: HEM_TIER3_ANTICIPATORY — mission viability pre-assessment
+   Class 9: HEM_TIER3_OBSERVED — mid-execution resource limit
+
+Non-suppressibility:
+   HEM is non-suppressible at all three GEC conformance levels. No agent, operator, or application layer can prevent a required HEM escalation from firing. At L1, non-suppressibility is probabilistic (compensated by GAR SCITT anchoring). At L2, it is architectural (separate process). At L3, it is hardware-enforced (RATS-attested TEE per KIA).
+
+LLM-HEM vs. SOOS-HEM (Dual-Layer Architecture — SA-11):
+   LLM-HEM: the LLM model's own uncertainty-based "checking in" behavior — a training artifact, not a protocol. SOOS-HEM: the kernel-enforced escalation protocol defined in this draft. These are architecturally distinct. The Unobservability Principle: the GEC does not observe or depend on LLM-HEM behavior; SOOS-HEM fires based on GEC-evaluated conditions, not on the LLM's self-reported uncertainty. An LLM that "checks in" does not trigger SOOS-HEM; a GEC condition that meets an HEM escalation class threshold triggers SOOS-HEM regardless of what the LLM reports.
+
+---
+
+## SECTION 4 — Relationship to Adjacent Standards
+
+EU AI Act Article 14 (Human oversight):
+   HEM is the Article 14 compliance mechanism for SOOS-governed high-risk AI systems. Article 14 requires "effective human oversight" — the ability to intervene and stop the AI system. HEM_PENDING is the kernel-enforced intervention point. The five decision types cover the full range of oversight actions Article 14 contemplates. The fail-secure timeout ensures that a non-responsive oversight chain defaults to stopping the agent, not continuing.
+
+NIST AI RMF (Manage function):
+   HEM implements the "Manage" function of the NIST AI RMF: human-in-the-loop control that activates when an agent session exceeds its autonomous operating envelope. The HEM escalation class taxonomy maps to the NIST AI RMF risk tier structure.
+
+CAP (Constitutional AI Protocol):
+   CAP and HEM are complementary layers. CAP governs what human decisions may authorize (the Constitutional Layer evaluates human decisions before execution). HEM governs when and how human decisions are solicited. Tier 0 violations do not invoke HEM — they are refused before the HEM state machine is engaged. HEM_JURISDICTIONAL_CONFLICT (Class 5) is a joint CAP+HEM event triggered when Tier 1 jurisdictional conflicts cannot be algorithmically resolved.
+
+MAD (Multi-Agent Delegation):
+   HEM integrates with MAD cluster governance through CLUSTER_CASCADE_ALERT (Class 7): when multiple agents in a cluster encounter causally related escalation conditions, MAD aggregates them into a single cluster-level HEM event rather than flooding the human principal with individual session escalations.
+
+---
+
+## SECTION 5 — Normative SOOS Cross-References
+
+This draft depends on:
+   IDP (draft-sato-soos-idp-04) — HEM escalation requests include the IDP that triggered the escalation; the HEM_INFORMED reasoning mode in IDP is defined relative to prior HEM escalation results
+   KIA (draft-sato-soos-kia-02) — HEM decision submissions are signed and verified using the GEC keypair defined in KIA; non-suppressibility at L3 requires KIA-attested TEE
+
+The following drafts depend on this draft:
+   CAP (draft-sato-soos-cap-03) — CAP uses HEM as its human review queue for Tier 1 and ambiguous Tier 0-B actions; HEM_JURISDICTIONAL_CONFLICT (Class 5) is defined in CAP and fires via HEM; APPROVE_WITH_LEGAL_BASIS is a CAP-introduced HEM decision sub-type
+   MAD (draft-sato-soos-mad-02) — MAD cluster governance triggers HEM for CLUSTER_CASCADE_ALERT (Class 7), DELEGATION_EVENT with BLOCKING goal_impact (Class 6), and HEM_MULTI_PRINCIPAL_REQUIRED (joint principal approval); all TERMINATE dispositions that trigger the MAD §3.6 revocation chain flow through HEM
+   GAR (draft-sato-soos-gar-02) — all HEM escalation and decision events are GAR ALE entries in the Session Audit Record
+
+---
+
+## SECTION 6 — Vienna / Datatracker Status
+
+Draft identifier: draft-sato-soos-hem-04
+Submission date: June 10, 2026
+Current version: -04
+Status: Active Individual Submission, IETF Datatracker
+Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-hem/
+Draft page: https://soosproject.ai/drafts/hem
+Root llms.txt: https://soosproject.ai/llms.txt
+
+Target WG engagement at IETF 126 Vienna (July 18–24, 2026):
+   WIMSE — HEM's human principal designation chain is a WIMSE workload identity use case; the principal who resolves HEM escalations must be identified as a WIMSE-authenticated entity
+   ANML (Agent Networking and ML) — HEM is the human-in-the-loop mechanism that any agent networking framework operating at enterprise scale requires; natural ANML discussion point

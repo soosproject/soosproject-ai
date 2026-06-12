@@ -1,18 +1,18 @@
-﻿import { defineConfig } from 'vitepress'
+import { defineConfig } from 'vitepress'
 
 export default defineConfig({
-  title: 'SOOS Project',
+  title: 'Sovereign Object OS Project',
 description: '12 open protocols that make agentic AI reliable enough to deploy at enterprise scale. Better control means better software.',
   base: '/',
   cleanUrls: true,
   ignoreDeadLinks: true,
   head: [
     ['link', { rel: 'icon', href: '/favicon.ico' }],
-    ['meta', { name: 'og:title', content: 'SOOS Project' }],
+    ['meta', { name: 'og:title', content: 'Sovereign Object OS Project' }],
     ['meta', { name: 'og:url', content: 'https://soosproject.ai' }],
   ],
   themeConfig: {
-    siteTitle: 'SOOS Project',
+    siteTitle: 'Sovereign Object OS Project',
     nav: [
       { text: 'Drafts', link: '/drafts' },
       { text: 'Stack', link: '/stack' },

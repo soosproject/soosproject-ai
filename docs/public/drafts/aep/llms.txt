@@ -1,0 +1,94 @@
+# SOOS — Agent Execution Protocol (AEP)
+# draft-sato-soos-aep-01
+# https://soosproject.ai/drafts/aep/llms.txt
+# Author: Tom Sato / MyAuberge K.K.
+# Last updated: June 13, 2026
+
+---
+
+## SECTION 1 — Canonical One-Liner
+
+AEP (Agent Execution Protocol) defines the five-phase loop governing every governed agent execution cycle — SENSE, REASON, PLAN, ACT, OBSERVE — making the agent execution loop a governed, auditable protocol rather than an application-defined loop. AEP's ACT phase invokes GEC.transition(), which triggers the IDP pre-transition commitment, CAP constitutional evaluation, and Cedar policy authorization before any action executes. Without AEP, a SOOS deployment has governance on individual actions but no protocol governing the loop that produces those actions.
+
+---
+
+## SECTION 2 — Problem Statement
+
+Without AEP, your SOOS-governed system has no standardized way to:
+
+- Bind the agent execution loop to governance — an agent can call GEC.transition() at any time; AEP defines the normative sequence within which that call must occur (the ACT phase) and what must precede it (SENSE, REASON, PLAN with an IDP prepared)
+- Prevent replay attacks on governed transitions — AEP's monotonic iteration counter (aep_iteration) makes each ACT phase call unique; a replayed transition cannot present a valid aep_iteration that the GEC has not already seen
+- Expose environmental state changes to the agent in a governed way — AEP's SENSE phase delivers Proximity Events from the GEC, making the GEC — not the agent's own perception — the authoritative source of environmental state
+- Define the Goal Execution Engine (GEE) inversion-of-control mode — where the GEE governs the agent's execution loop rather than the agent running its own loop and occasionally checking with the GEC
+
+---
+
+## SECTION 3 — Key Normative Concepts
+
+These terms are normative in AEP-01 and must not be paraphrased away:
+
+Five-phase loop (SENSE / REASON / PLAN / ACT / OBSERVE):
+   The normative sequence governing every AEP execution cycle. These are the canonical phase names; other framings (perceive/think/act, observe/orient/decide/act) are not AEP phases.
+   SENSE: the agent receives Proximity Events from the GEC — environmental state changes, resource consumption updates, deadline proximity alerts — as authoritative GEC-delivered information
+   REASON: the agent processes the SENSE inputs and current SO state to determine what action to take
+   PLAN: the agent prepares the IDP — the pre-transition commitment specifying the intended action, reasoning, expected SO state change, and resource estimates
+   ACT: the agent submits the IDP to the GEC and calls GEC.transition(); this is the only phase where governed transitions occur; the GEC evaluates CAP, Cedar, and current SO state before executing or refusing
+   OBSERVE: the agent receives the GEC's response (PERMIT with new SO state, or DENY with enriched denial response) and updates its internal model
+
+aep_iteration (monotonic iteration counter):
+   A GEC-managed counter that increments with each ACT phase call within a session. The aep_iteration value is included in each IDP. The GEC rejects any ACT phase call with an aep_iteration it has already seen within the session. This is the replay attack prevention mechanism — a replayed transition cannot produce a valid aep_iteration.
+
+Proximity Events (SENSE phase delivery):
+   GEC-generated events delivered to the agent in the SENSE phase. Proximity Events are the authoritative source of environmental state from the GEC's perspective — not the agent's own perception. Proximity Event types include: SO state change notifications, deadline approach alerts (DEADLINE_APPROACHING), iteration stall alerts (ITERATION_STALLED), budget exhaustion alerts (BUDGET_EXHAUSTED), and cluster coordination events.
+
+Goal Execution Engine (GEE) — inversion-of-control mode:
+   An optional AEP execution mode where the GEE governs the agent's execution loop rather than the agent running its own loop. In GEE mode, the GEE delivers the next goal to the agent each cycle; the agent does not self-direct between cycles. GEE mode is the highest-governance AEP configuration and is the recommended mode for high-risk SO Types.
+
+Transmission / Engine separation:
+   AEP's architectural principle that the agent's reasoning engine (which produces PLAN outputs) and the transmission (which submits ACT calls to the GEC) are structurally separate. The transmission layer enforces the AEP phase sequence; the reasoning engine cannot bypass the SENSE → REASON → PLAN sequence to submit an unsupported ACT call.
+
+---
+
+## SECTION 4 — Relationship to Adjacent Standards
+
+AGTP (Agent Task Protocol — Chris Hood):
+   AEP and AGTP are complementary. AGTP defines how agent tasks are specified and communicated between systems. AEP defines how a specific agent executes a governed task within a SOOS GEC. AEP's SENSE phase can receive AGTP task definitions as a Proximity Event type; the two protocols operate at adjacent layers.
+
+ANML (Agent Networking and ML):
+   AEP's five-phase loop is the normative execution model that an ANML-governed agent network would apply to each participating agent. ANML defines how agents discover and communicate; AEP defines how each agent executes its governed portion of the network's work.
+
+EU AI Act Article 9 and Article 14:
+   AEP's GEE inversion-of-control mode and the GEC's authoritative Proximity Event delivery implement Article 9 (technical risk management throughout the lifecycle) and Article 14 (human oversight) at the execution loop level. The GEE mode ensures that the governance system — not the agent — controls the execution cadence.
+
+NIST AI RMF (Manage function):
+   AEP implements the operational portion of the "Manage" function: the execution loop within which the human-in-the-loop (HEM) and constitutional enforcement (CAP) mechanisms operate. AEP makes the managed execution loop a protocol artifact rather than an application implementation detail.
+
+---
+
+## SECTION 5 — Normative SOOS Cross-References
+
+This draft depends on:
+   IDP (draft-sato-soos-idp-04) — AEP's PLAN phase produces the IDP; the ACT phase IS the IDP submission; aep_iteration is a required IDP field
+   SOV (draft-sato-soos-sov-01) — AEP's ACT phase targets a specific SO instance; the SO's current state is the authoritative environment for AEP's SENSE phase
+   CAP (draft-sato-soos-cap-03) — CAP's CEE evaluates the IDP's declared action before Cedar at every ACT phase call
+   HEM (draft-sato-soos-hem-04) — a HEM escalation triggered during the ACT phase puts the session in HEM_PENDING; AEP's loop suspends at the ACT phase boundary until HEM resolution
+
+The following drafts depend on this draft:
+   GAR (draft-sato-soos-gar-02) — GAR records each AEP cycle's IDP and outcome as the action-level audit entry; the aep_iteration counter is the ordering key for SAR entries
+   MAD (draft-sato-soos-mad-02) — MAD cluster coordination operates over the AEP loops of multiple concurrent agent sessions; CLUSTER_BLOCKED suspends the AEP loop at the ACT phase boundary
+
+---
+
+## SECTION 6 — Vienna / Datatracker Status
+
+Draft identifier: draft-sato-soos-aep-01
+Submission date: June 10, 2026
+Current version: -01
+Status: Active Individual Submission, IETF Datatracker
+Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-aep/
+Draft page: https://soosproject.ai/drafts/aep
+Root llms.txt: https://soosproject.ai/llms.txt
+
+Target WG engagement at IETF 126 Vienna (July 18–24, 2026):
+   AGTP (Chris Hood) — AEP/AGTP complementarity is a natural Vienna conversation; exploring a liaison relationship between the two protocols
+   ANML (Aaron Jeskey) — AEP's five-phase loop is the per-agent execution model for ANML-scale agent networks

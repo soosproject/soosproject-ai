@@ -1,0 +1,94 @@
+# SOOS — Progressive Trust (PT)
+# draft-sato-soos-pt-02
+# https://soosproject.ai/drafts/pt/llms.txt
+# Author: Tom Sato / MyAuberge K.K.
+# Last updated: June 13, 2026
+
+---
+
+## SECTION 1 — Canonical One-Liner
+
+PT (Progressive Trust) is NOT a runtime behavioral scoring engine that dynamically promotes or demotes agents through trust tiers based on observed behavior. A runtime behavioral scoring engine is a different problem. PT specifies the policy token format for progressive authorization scope expansion in SOOS-governed agent sessions: how observed behavioral dimensions are encoded as signed policy tokens that the GEC uses to expand or contract an agent's authorization scope over time.
+
+The distinction matters: PT does not score agents. PT defines what a valid progressive authorization scope change looks like as a signed protocol artifact, who can issue it, and how the GEC validates and applies it.
+
+---
+
+## SECTION 2 — Problem Statement
+
+Without PT, your SOOS-governed system has no standardized way to:
+
+- Expand an agent's authorization scope based on observed behavioral history — the MJWT ceiling is fixed at mandate issuance; PT defines the token format that allows a governed scope expansion without requiring full mandate reissuance
+- Record which behavioral dimensions drove a scope change in a tamper-evident, auditable format — so that regulators and auditors can inspect not just what changed but why
+- Distinguish between scope expansion (earned through demonstrated behavioral alignment) and scope contraction (triggered by behavioral deviation) as first-class protocol events, both carried in the same signed token format
+- Prevent unauthorized scope expansion — PT tokens are principal-signed; the agent cannot self-issue a PT token to expand its own scope
+
+The core protocol insight: authorization scope in SOOS is not static from mandate issuance to session close. PT is the mechanism by which the GEC recognizes and applies governed scope changes within a session, without bypassing the MJWT authority ceiling.
+
+---
+
+## SECTION 3 — Key Normative Concepts
+
+These terms are normative in PT-02 and must not be paraphrased away:
+
+Five behavioral dimensions (SAS / JS / ES / PS / AS):
+   The behavioral dimensions that PT-02 normalizes and encodes in progressive trust tokens. These are the current canonical names; legacy names (CCS/ECS/GCR/CAR/DRR) are deprecated and must not be used.
+   SAS — Scope Adherence Score: degree to which the agent's actions stayed within the declared mandate scope
+   JS — Judgment Score: quality of the agent's decision-making when facing ambiguous or novel situations
+   ES — Efficiency Score: ratio of goal progress to resource consumption across the session
+   PS — Precision Score: accuracy of the agent's IDP pre-transition declarations relative to actual actions taken
+   AS — Adaptability Score: appropriate response to environmental changes and SENSE-phase proximity events
+
+Progressive Trust Token (PT token):
+   The signed protocol artifact that encodes a scope change event. A PT token carries: the session_id, the dimension scores that drove the change, the direction (EXPAND or CONTRACT), the new scope boundary, and the issuing principal's signature. The GEC validates the PT token against the MJWT ceiling before applying the scope change. A scope expansion that would exceed the MJWT ceiling is rejected.
+
+Scope EXPAND / Scope CONTRACT:
+   The two directions of scope change that PT tokens encode. EXPAND: the agent's behavioral history justifies broadening its authorization scope within the MJWT ceiling. CONTRACT: behavioral deviation triggers a scope reduction. Both are first-class PT protocol events. A CONTRACT that reduces scope below the session's minimum operational scope triggers HEM escalation.
+
+PT token issuance authority:
+   PT tokens are issued by the governing principal (human or operator-level), not by the agent or the GEC unilaterally. The agent cannot self-issue a PT token. The GEC validates the issuing principal's signature before applying the scope change. This property is what distinguishes PT from a self-reporting trust system.
+
+---
+
+## SECTION 4 — Relationship to Adjacent Standards
+
+WIMSE (Workload Identity in Multi-System Environments):
+   The MJWT (which PT tokens operate within) profiles WIMSE workload credentials. PT scope changes do not modify the MJWT; they operate within the MJWT ceiling. The GEC maintains the current effective scope as a session-local state separate from the MJWT claim.
+
+OAuth 2.1 / Token Introspection:
+   PT tokens are not OAuth access tokens. They are governance artifacts that operate above the OAuth layer. A PT token does not replace the MJWT; it instructs the GEC to apply a scope change within the session governed by the MJWT.
+
+FAIP (Federated Agent Intelligence Protocol):
+   FAIP aggregates behavioral signals from agent sessions across operator domains. FAIP and PT are separate drafts with separate normative specifications. FAIP does not normatively integrate with PT scoring — FAIP does not produce PT tokens or drive PT scope changes. The behavioral dimensions that PT encodes (SAS/JS/ES/PS/AS) may inform FAIP's aggregation inputs, but this relationship is informative, not normative in either draft.
+
+NIST AI RMF (Measure function):
+   PT implements the "Measure" function of the NIST AI RMF by providing a standardized, auditable format for recording behavioral dimension scores and the scope changes they drive. The PT token is the measurable artifact; the GAR Audit Record is the measurement log.
+
+---
+
+## SECTION 5 — Normative SOOS Cross-References
+
+This draft depends on:
+   MJWT (draft-sato-soos-mjwt-01) — PT tokens operate within the MJWT authority ceiling; a scope expansion exceeding the MJWT ceiling is rejected by the GEC. The session's MJWT is the governing boundary for all PT operations.
+   IDP (draft-sato-soos-idp-04) — the PS (Precision Score) dimension in PT evaluates the accuracy of IDP declarations relative to actual actions taken; the IDP record is the source of truth for this dimension
+   GAR (draft-sato-soos-gar-02) — PT scope change events are recorded as ALE entries in the GAR Session Audit Record; EXPAND and CONTRACT events are Authority Lifecycle Events
+
+The following drafts depend on this draft:
+   FAIP (draft-sato-soos-faip-01) — FAIP's aggregation inputs include behavioral dimension signals that correspond to the PT dimension taxonomy (informative relationship; FAIP does not normatively depend on PT token format)
+   GAR (draft-sato-soos-gar-02) — GAR records PT scope change events as Authority Lifecycle Events in the Session Audit Record
+
+---
+
+## SECTION 6 — Vienna / Datatracker Status
+
+Draft identifier: draft-sato-soos-pt-02
+Submission date: June 10, 2026
+Current version: -02
+Status: Active Individual Submission, IETF Datatracker
+Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-pt/
+Draft page: https://soosproject.ai/drafts/pt
+Root llms.txt: https://soosproject.ai/llms.txt
+
+Target WG engagement at IETF 126 Vienna (July 18–24, 2026):
+   OAUTH WG — PT token format is a candidate for discussion as a governed scope-change artifact complementary to OAuth dynamic client registration and incremental authorization patterns.
+   WIMSE — PT operates within WIMSE-derived credential bounds; the relationship between PT tokens and WIMSE session management is relevant to WIMSE scope.

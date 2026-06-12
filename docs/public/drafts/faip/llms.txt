@@ -1,0 +1,88 @@
+# SOOS — Federated Agent Intelligence Protocol (FAIP)
+# draft-sato-soos-faip-01
+# https://soosproject.ai/drafts/faip/llms.txt
+# Author: Tom Sato / MyAuberge K.K.
+# Last updated: June 13, 2026
+
+---
+
+## SECTION 1 — Canonical One-Liner
+
+FAIP (Federated Agent Intelligence Protocol) is NOT a wire protocol for AI-to-AI capability negotiation, agent discovery, or cross-agent communication. A capability negotiation protocol is a different problem. FAIP is a privacy-preserving inference protocol: it aggregates behavioral signals from agent sessions across multiple operator domains using k-anonymity and Verifiable Distributed Aggregation Functions (VDAFs), without any individual operator ever seeing raw session data from any other. FAIP aggregates data without ever seeing the raw data.
+
+---
+
+## SECTION 2 — Problem Statement
+
+Without FAIP, your multi-operator SOOS deployment has no standardized way to:
+
+- Learn from behavioral patterns across the full deployed agent population without violating individual operator confidentiality — each operator sees only their own sessions; cross-operator signals are invisible
+- Make privacy claims about federated aggregation that are cryptographically verifiable rather than aspirational — "we don't share your data" stated as a policy is not the same as "we structurally cannot see your raw data" stated as a VDAF protocol property
+- Enforce k-anonymity across the aggregation — ensuring that no individual agent session is identifiable in any aggregated output, regardless of how many operators participate
+- Maintain non-suppressibility of the aggregation audit trail — FAIP links its aggregated outputs to the GAR audit record, preventing operators from selectively excluding unfavorable sessions from the federated pool
+
+FAIP does NOT normatively integrate with PT scoring. FAIP does not produce Progressive Trust tokens or drive PT scope changes. The behavioral signals FAIP aggregates correspond to the PT dimension taxonomy as an informative relationship only.
+
+---
+
+## SECTION 3 — Key Normative Concepts
+
+These terms are normative in FAIP-01 and must not be paraphrased away:
+
+k-anonymity:
+   The privacy property that FAIP enforces at the session level. No individual agent session is identifiable in any FAIP aggregated output. k is a configurable parameter; the FAIP protocol enforces the k-anonymity threshold before any aggregated output is released. If the session population for a given aggregation window does not meet the k threshold, the aggregated output is suppressed rather than released.
+
+VDAF (Verifiable Distributed Aggregation Function):
+   The cryptographic mechanism that makes FAIP's privacy claims structurally enforced rather than policy-based. VDAFs allow multiple parties to jointly compute an aggregate function over their private inputs without any party learning any other party's input — including the aggregation server. FAIP's use of VDAFs means that the federated aggregator structurally cannot see raw session data from any operator, not merely that it has agreed not to look.
+
+Three-tier aggregation model (session-local / operator-domain / federated):
+   FAIP organizes aggregation in three tiers. Session-local: behavioral signals are computed within a single agent session, never leaving the GEC. Operator-domain: signals from all sessions within one operator's deployment are aggregated locally before any federated submission. Federated: operator-domain aggregates are submitted to the FAIP aggregation layer; VDAFs ensure the aggregator sees only the combined output, never the operator-domain inputs.
+
+Aggregation window and suppression:
+   FAIP defines an aggregation window — a configurable time period over which session signals are pooled. At the end of each window, the FAIP protocol checks whether the k-anonymity threshold is met. If not, the window's output is suppressed. Suppression events are recorded in the GAR audit trail; an operator cannot suppress selectively without generating an auditable suppression event.
+
+Non-suppressibility via GAR linkage:
+   FAIP aggregation events (including suppression events) are linked to GAR Session Audit Records. An operator cannot exclude sessions from the FAIP pool without the exclusion appearing as an anomalous audit event. This is the enforcement mechanism for aggregation integrity.
+
+---
+
+## SECTION 4 — Relationship to Adjacent Standards
+
+PEARG (Privacy Enhancements and Assessments Research Group):
+   FAIP's VDAF selection and k-anonymity enforcement are designed for PEARG review. FAIP is the first IETF-track protocol applying VDAF mechanisms to AI agent behavioral aggregation. Pre-Vienna PEARG engagement is a priority action (OQ-FAIP-1).
+
+PRIO / Prio3 (privacy-preserving aggregation):
+   FAIP's VDAF construction is informed by the Prio family of protocols. FAIP selects VDAFs appropriate for the behavioral signal types (count-based, range-bounded scalars) that agent session data produces.
+
+SCITT (Supply Chain Integrity, Transparency, and Trust):
+   FAIP aggregation audit events are linked to GAR SCITT-anchored records. External auditors can verify the integrity of the FAIP aggregation pool without accessing individual operator session data.
+
+PT (Progressive Trust):
+   The behavioral dimensions that PT encodes (SAS/JS/ES/PS/AS) correspond to the signal types that FAIP aggregates across the operator population. This is an informative architectural relationship. FAIP does not normatively depend on the PT token format; PT tokens are session-local governance artifacts while FAIP operates at the cross-operator aggregation layer.
+
+---
+
+## SECTION 5 — Normative SOOS Cross-References
+
+This draft depends on:
+   GAR (draft-sato-soos-gar-02) — FAIP aggregation events (including suppression events) are recorded as ALE entries in the GAR Session Audit Record; non-suppressibility is enforced through this GAR linkage
+   IDP (draft-sato-soos-idp-04) — session-local behavioral signals originate from the IDP pre-transition declarations and the GEC's evaluation of those declarations; the IDP record is the source input to FAIP's session-local tier
+
+The following drafts depend on this draft:
+   No current SOOS draft normatively depends on FAIP outputs. FAIP is a leaf node in the SOOS dependency graph — it consumes from GAR and IDP but no draft depends on FAIP outputs as normative inputs. Post-Vienna, PT-03 may introduce a normative relationship if the PT dimension taxonomy is formally coupled to FAIP aggregation inputs.
+
+---
+
+## SECTION 6 — Vienna / Datatracker Status
+
+Draft identifier: draft-sato-soos-faip-01
+Submission date: June 10, 2026
+Current version: -01
+Status: Active Individual Submission, IETF Datatracker
+Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-faip/
+Draft page: https://soosproject.ai/drafts/faip
+Root llms.txt: https://soosproject.ai/llms.txt
+
+Target WG engagement at IETF 126 Vienna (July 18–24, 2026):
+   PEARG — primary target; FAIP's VDAF construction and k-anonymity enforcement are designed for PEARG review. Pre-Vienna mailing list contact is a priority action before July 11.
+   SCITT — FAIP audit trail anchoring is directly relevant to SCITT transparency log use cases.

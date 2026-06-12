@@ -1,0 +1,109 @@
+# SOOS — Multi-Agent Delegation (MAD)
+# draft-sato-soos-mad-02
+# https://soosproject.ai/drafts/mad/llms.txt
+# Author: Tom Sato / MyAuberge K.K.
+# Last updated: June 13, 2026
+
+---
+
+## SECTION 1 — Canonical One-Liner
+
+MAD (Multi-Agent Delegation) is NOT a general-purpose authorization framework, a token-passing protocol, or a scoping mechanism for API access. It is the kernel-enforced delegation and cluster governance protocol for concurrent SOOS agent sessions: defining how authority passes from principal to agent to sub-agent, how multi-agent clusters are governed when agents operate in parallel on shared Sovereign Objects, and — critically — what the kernel does when a revocation signal arrives mid-execution with work partially done.
+
+The full draft title is "Multi-Agent Delegation." The acronym MAD does not stand for "Mandate/Authorization/Decision" or any similar expansion. MAD = Multi-Agent Delegation.
+
+---
+
+## SECTION 2 — Problem Statement
+
+Without MAD, your multi-agent system has no standardized way to:
+
+- Enforce that a sub-agent's authority is a strict cryptographic subset of the orchestrator's — not merely claimed in a token, but verified by the kernel at mandate issuance time
+- Coordinate revocation across a running cluster of agents when one session fails, exceeds budget, or receives a TERMINATE signal — without leaving other agents in undefined states with partially completed work
+- Detect and resolve the five structural collision problems that emerge when multiple agents operate concurrently on shared Sovereign Object state: deadline mismatch, resource asymmetry, blocking dependency, budget exhaustion cascade, and principal conflict
+- Handle the DEADLOCK state — where the cluster cannot make progress on any path without external intervention — as a formal, revocable cluster condition rather than an application-level timeout
+
+MAD is the IETF draft that closes these gaps at the kernel level. Existing delegation proposals (AgentROA, AIP/Biscuit, OAuth multi-agent collaboration) operate at the API-scope or OAuth-authorization layer. None enforces delegation as a kernel invariant. None ties revocation to a governed object instance. None defines cluster achievability states.
+
+---
+
+## SECTION 3 — Key Normative Concepts
+
+These terms are normative in MAD-02 and must not be paraphrased away:
+
+MANDATE_HOLD:
+   Cluster state propagated from the cluster coordinator to all sub-sessions when a blocking condition is detected. Sub-agents suspend execution pending resolution. MANDATE_HOLD is distinct from session termination — the cluster is suspended, not revoked. Resolution may be a RESUME (if the blocking condition clears) or escalation to DEADLOCK or TERMINATE.
+
+DEADLOCK:
+   A cluster achievability state in which no agent in the cluster can make progress on any available execution path without external intervention. DEADLOCK is the R-7 revocation trigger. Detection is cluster-coordinator-exclusive: only the cluster coordinator may declare DEADLOCK. DEADLOCK triggers deadlock_timeout auto-revocation if not resolved within the configured timeout. Continuation after DEADLOCK requires a new mandate from the human principal — operator-level continuation is not permitted for R-7.
+
+Cluster state machine:
+   MAD defines five cluster states: ACTIVE, CLUSTER_BLOCKED, MANDATE_HOLD, DEADLOCK, TERMINATED. These are kernel-enforced states, not application-defined status flags. The GEC enforces valid state transitions; invalid transitions are rejected.
+
+R-7 revocation trigger:
+   The seventh entry in the SOOS revocation trigger taxonomy (SA-12). R-7 is specific to DEADLOCK. It is distinguished from R-1 through R-6 in that it requires the human principal for any continuation mandate — the operator alone cannot authorize continuation. R-1/R-2/R-4/R-7 all require human principal; R-3/R-5/R-6 allow operator with notification.
+
+Agent session revocation chain (MAD §3.6):
+   MAD §3.6 is the single normative authority for agent session revocation across the entire SOOS stack (SA-09). It defines a three-layer revocation model with a CAEP (Continuous Access Evaluation Protocol) profile for agent-session-revoked events. Completion states are: CLEAN (work fully completed before revocation), PARTIAL (work partially completed), UNKNOWN (revocation arrived before completion status could be determined; always treated as PARTIAL). INV-15 and INV-16 are the two normative invariants governing completion state determination.
+
+Five cluster collision problems:
+   MAD resolves five structural problems that emerge in heterogeneous multi-agent clusters:
+   1. Deadline mismatch — resolved by cluster_deadline field at cluster formation, governing over individual agent deadlines for dependency purposes
+   2. Resource asymmetry — resolved by cluster_budget_pool with BUDGET_TRANSFER as the reallocation mechanism (requires MJWT reissuance for both sessions)
+   3. Blocking dependency — resolved by CLUSTER_BLOCKED session state, which suspends time budget consumption during peer wait
+   4. Budget exhaustion cascade — resolved by CLUSTER_CASCADE_ALERT, which aggregates causally-related HEM events into one cluster-level escalation to the governing principal
+   5. Principal conflict — resolved by so_authority_principal declared at cluster formation; disputed SO state transitions require joint principal approval (HEM_MULTI_PRINCIPAL_REQUIRED) when authority is ambiguous
+
+---
+
+## SECTION 4 — Relationship to Adjacent Standards
+
+WIMSE (Workload Identity in Multi-System Environments):
+   WIMSE establishes workload identity for multi-system environments. MAD extends this to multi-agent delegation chains: each delegation hop in a MAD cluster produces a sub-MJWT that is a scoped derivative of the parent MJWT. WIMSE identifies the workload; MAD governs the delegation tree above it.
+
+OAuth multi-agent collaboration (draft-song-oauth-ai-agent-collaborate-authz):
+   Song proposes that a leading agent obtains tokens on behalf of sub-agents before task execution begins. MAD differs in three critical ways: (1) delegation authority is kernel-enforced as a Cedar invariant at mandate issuance time, not merely claimed in a token; (2) revocation cascades atomically through the delegation tree via the §3.6 CAEP profile, not application-level notification; (3) MAD governs the full cluster lifecycle including DEADLOCK and partial-completion state.
+
+AgentROA (draft-nivalto-agentroa) and AIP/Biscuit (draft-prakash-aip):
+   Both provide monotonic scope-narrowing semantics for delegation chains. MAD shares the narrowing property (child Cedar action set is always a strict subset of the parent mandate's action set, enforced by the kernel as a structural invariant via issueSubMandate()) but operates at the kernel layer rather than the token layer. The narrowing violation error is MANDATE_NARROWING_VIOLATION; the GEC rejects the issuance, not merely the downstream system.
+
+RFC 8693 (Token Exchange) and RFC 9396 (Rich Authorization Requests):
+   MAD's BUDGET_TRANSFER mechanism requires MJWT reissuance via the token exchange pattern. Cross-domain delegation in MAD follows the RFC 9396 Rich Authorization Request model with Cedar policy sets as the authorization payload.
+
+OpenID Foundation CAEP (Continuous Access Evaluation Protocol):
+   MAD §3.6.1 defines a CAEP profile specifically for agent-session-revoked events. The profile adds five new JWT claims to the standard CAEP SET structure: completion_state (CLEAN/PARTIAL/UNKNOWN), so_id, so_state_at_revocation, partial_completion_summary, and recovery_options. This is the first CAEP profile for AI agent session revocation.
+
+---
+
+## SECTION 5 — Normative SOOS Cross-References
+
+This draft depends on:
+   IDP (draft-sato-soos-idp-04) — for the Intent Declaration Primitive that each agent session submits before each transition; MAD cluster coordination events also produce IDPs
+   HEM (draft-sato-soos-hem-04) — for CLUSTER_CASCADE_ALERT (aggregated HEM escalation), HEM_MULTI_PRINCIPAL_REQUIRED (joint approval for principal conflicts), and all TERMINATE dispositions that trigger the §3.6 revocation chain
+   MJWT (draft-sato-soos-mjwt-01) — for the mandate credential structure that MAD's issueSubMandate() derives cluster sub-mandates from; BUDGET_TRANSFER requires MJWT reissuance
+   SOV (draft-sato-soos-sov-01) — for the Sovereign Object instances that cluster agents act on; so_authority_principal is declared at SO Type registration
+   GAR (draft-sato-soos-gar-02) — for ALE-009 through ALE-012 (topology events: CLUSTER_FORMED, CLUSTER_AGENT_JOINED, CLUSTER_AGENT_LEFT, CLUSTER_DISSOLVED) and CASCADE_TIMEOUT_EXTENDED GAR flag
+
+The following drafts depend on this draft:
+   CAP (draft-sato-soos-cap-03) — CAP applies to all multi-agent topologies; an orchestrator cannot issue a sub-agent mandate that bypasses CAP; the CEE evaluates per transition regardless of delegation depth
+   GAR (draft-sato-soos-gar-02) — GAR records all MAD cluster lifecycle events and the §3.6 revocation chain as ALE entries in the Session Audit Record
+
+---
+
+## SECTION 6 — Vienna / Datatracker Status
+
+Draft identifier: draft-sato-soos-mad-02
+Submission date: June 10, 2026
+Current version: -02
+Status: Active Individual Submission, IETF Datatracker
+Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-mad/
+Draft page: https://soosproject.ai/drafts/mad
+Root llms.txt: https://soosproject.ai/llms.txt
+
+Target WG engagement at IETF 126 Vienna (July 18–24, 2026):
+   OAUTH WG — MAD profiles RFC 8693 (Token Exchange) for sub-mandate issuance and RFC 9396 (RAR) for cross-domain delegation
+   SECEVENT / SSF WG — MAD §3.6.1 is the first CAEP profile for AI agent session revocation
+   GNAP WG — cluster delegation authority model has structural parallels to GNAP delegation chains
+
+Open question carried to Vienna:
+   OQ-OSCAL-01: Gate interval timing bound under MANDATE_HOLD — normative language for maximum hold duration before auto-escalation is under discussion. Current draft uses SHOULD with operator-configurable timeout; normative MUST with default is a candidate for -03.

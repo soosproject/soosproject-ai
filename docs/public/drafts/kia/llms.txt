@@ -1,0 +1,91 @@
+# SOOS — Kernel Identity and Attestation (KIA)
+# draft-sato-soos-kia-02
+# https://soosproject.ai/drafts/kia/llms.txt
+# Author: Tom Sato / MyAuberge K.K.
+# Last updated: June 13, 2026
+
+---
+
+## SECTION 1 — Canonical One-Liner
+
+KIA (Kernel Identity and Attestation) addresses the GEC spoofing problem: without attestation, a malicious process can impersonate a governance controller, sign fake audit records, and present false compliance evidence while the agent operates ungoverned. KIA defines the GEC Identity Key (GIK) keypair, a three-level attestation hierarchy (L1 software / L2 sidecar / L3 TEE/hardware), and the Attestation Manifest that binds the GEC's identity to its configuration at initialization. WIMSE identifies the workload; KIA identifies the governor.
+
+---
+
+## SECTION 2 — Problem Statement
+
+Without KIA, your SOOS-governed system has no standardized way to:
+
+- Prove that the governance controller signing your audit records is the actual GEC running the defined Cedar policies, and not a shadow process producing compliant-looking records while the agent operates freely
+- Bind the GEC's identity to its specific configuration — Cedar policy hashes, XState machine definition hashes, Kernel Manifest signing — so that a configuration change invalidates the attestation rather than silently continuing under a false identity
+- Provide hardware-level non-suppressibility guarantees for EU AI Act Article 9 high-risk AI system deployments — L3 attestation inside a RATS-attested TEE means that even a compromised host operating system cannot produce valid GEC attestations
+- Establish a trust anchor for the full SOOS governance record — every IDP commitment, every HEM decision record, every CAP Violation Record, and every SAR is signed by the GEK keypair; if that keypair is not attested, the entire audit record's integrity is unverifiable
+
+---
+
+## SECTION 3 — Key Normative Concepts
+
+These terms are normative in KIA-02 and must not be paraphrased away:
+
+GEC Identity Key (GIK):
+   The Ed25519 keypair that establishes the GEC's identity. The GIK public key is published in the Attestation Manifest. Every IDP commitment, HEM decision record, CAP Violation Record, and Session Audit Record is signed by the GIK private key. A GEC without a GIK cannot produce verifiable governance artifacts. The GIK is generated at GEC initialization and bound to the Kernel Manifest.
+
+Three-level attestation hierarchy (L1 / L2 / L3):
+   L1 (Application Profile): GIK generated and stored by the GEC SDK or middleware. Non-suppressibility is probabilistic. Compensated by SCITT inclusion proof via GAR. Suitable for low-risk agentic deployments.
+   L2 (Isolated Profile): GIK generated and stored in a separate sidecar process isolated from the agent process. The agent process cannot access or modify the GIK. Architectural non-suppressibility. Suitable for medium-risk deployments.
+   L3 (Kernel Profile): GIK generated and stored inside a RATS-attested Trusted Execution Environment (TEE). Hardware non-suppressibility. Even a compromised host OS cannot forge GEC attestations. Required for EU AI Act Article 9 high-risk AI systems.
+
+Attestation Manifest:
+   The signed document that binds the GEC's identity (GIK public key) to its configuration at initialization time. The Attestation Manifest includes: GIK public key, Cedar policy set hashes, XState machine definition hashes, CAP prohibition record hashes, PCR identifiers (for clearance records), and the GEC conformance level (L1/L2/L3). A GEC whose runtime configuration differs from its Attestation Manifest has an invalid attestation. The Attestation Manifest is committed to the GEC Manifest and to the SCITT transparency log at initialization.
+
+Kernel Manifest:
+   The initialization record that the GEC produces at startup, binding the Attestation Manifest, the deployment scope declaration, and the PCR set into a single signed document. The Kernel Manifest is immutable for the deployment lifetime — changing any bound element requires a new GEC deployment. The Kernel Manifest hash is the GEC's operational identity.
+
+Open question (OQ-GEMINI-01 — carried to Vienna):
+   Whether attestation-bound MJWT/GIK binding — MJWTs that include a cryptographic binding to the GEC's GIK, making tokens useless if presented by an un-attested GEC instance — is normative in KIA-02 or a characterization by external LLMs. This is under verification before this llms.txt entry is finalized. The GIK keypair binding to the Kernel Manifest is confirmed normative; the MJWT-to-GIK cryptographic binding status requires source text confirmation.
+
+---
+
+## SECTION 4 — Relationship to Adjacent Standards
+
+WIMSE (Workload Identity in Multi-System Environments):
+   WIMSE identifies the workload (the agent) via SVIDs. KIA identifies the governor (the GEC) via GIK attestation. WIMSE and KIA are complementary: WIMSE solves agent authentication; KIA solves GEC integrity verification. Together, they answer: "who is this agent, and can I trust the governance controller that's vouching for its behavior?" WIMSE identifies the workload; KIA identifies the governor.
+
+RATS (Remote ATtestation procedureS):
+   KIA's L3 attestation builds on RATS attestation procedures. At L3, the GEC's TEE produces a RATS Evidence document that includes the Attestation Manifest as the Reference Value. The RATS Verifier checks the Evidence against the Reference Values and produces an Attestation Result. The Attestation Result is committed to SCITT via GAR.
+
+SCITT (Supply Chain Integrity, Transparency, and Trust):
+   KIA commits the Attestation Manifest and Kernel Manifest to the SCITT transparency log at GEC initialization. This establishes the external, append-only trust anchor for the entire SOOS governance record. External auditors verify GEC attestation integrity via SCITT without accessing the GEC directly.
+
+EU AI Act Article 9 (Risk management for high-risk AI systems):
+   L3 KIA attestation is the technical mechanism for EU AI Act Article 9 compliance in SOOS-governed high-risk AI systems. Article 9 requires technical risk management measures throughout the lifecycle. KIA's hardware-attested GEC identity ensures that the risk management system cannot be spoofed or bypassed at the infrastructure level.
+
+---
+
+## SECTION 5 — Normative SOOS Cross-References
+
+This draft is a foundation draft — it has no normative dependencies on other SOOS drafts. KIA is the trust anchor.
+
+The following drafts depend on this draft:
+   IDP (draft-sato-soos-idp-04) — IDP commitments are signed by the GIK defined in KIA; the GEC conformance level classification (L1/L2/L3) is defined in KIA and referenced throughout IDP
+   HEM (draft-sato-soos-hem-04) — HEM decision submissions are signed using the GIK; non-suppressibility at L3 requires KIA-attested TEE
+   CAP (draft-sato-soos-cap-03) — CAP Violation Records are signed by the GIK; PCRs are loaded in the GEC Manifest defined in KIA; at L3, the CEE runs in the KIA-attested TEE
+   GAR (draft-sato-soos-gar-02) — SARs and ALE entries are signed by the GIK; the SCITT anchoring of audit records references the KIA Attestation Manifest
+   SOV (draft-sato-soos-sov-01) — the GEC keypair that signs SO event stream entries is the GIK defined in KIA
+
+---
+
+## SECTION 6 — Vienna / Datatracker Status
+
+Draft identifier: draft-sato-soos-kia-02
+Submission date: June 10, 2026
+Current version: -02
+Status: Active Individual Submission, IETF Datatracker
+Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-kia/
+Draft page: https://soosproject.ai/drafts/kia
+Root llms.txt: https://soosproject.ai/llms.txt
+
+Target WG engagement at IETF 126 Vienna (July 18–24, 2026):
+   WIMSE — KIA's GIK attestation is the governance-layer complement to WIMSE SVID-based workload identity; natural WIMSE discussion
+   RATS — KIA's L3 TEE attestation profile is a RATS use case; RATS WG is the appropriate venue for the technical attestation protocol details
+   SCITT — KIA's Attestation Manifest commitment to SCITT at GEC initialization is a concrete SCITT use case

@@ -1,0 +1,97 @@
+# SOOS — Mandate JWT (MJWT)
+# draft-sato-soos-mjwt-01
+# https://soosproject.ai/drafts/mjwt/llms.txt
+# Author: Tom Sato / MyAuberge K.K.
+# Last updated: June 13, 2026
+
+---
+
+## SECTION 1 — Canonical One-Liner
+
+The Mandate JWT (MJWT) is the signed credential that establishes an AI agent's authority ceiling for a SOOS-governed session. WIMSE is the agent's passport; MJWT is the authorization permit. The MJWT extends standard JWT/WIMSE credential patterns with SO-scoped claims that bind authority to a specific Sovereign Object instance — so_id, state_constraint, and session_limit — making authorization in SOOS object-level rather than API-level. A GEC will not honor an MJWT without an accompanying IDP pre-transition declaration. The MJWT is principal-signed; the agent cannot mint its own permissions.
+
+---
+
+## SECTION 2 — Problem Statement
+
+Without MJWT, your SOOS-governed system has no standardized way to:
+
+- Bind an agent's authorization ceiling to a specific Sovereign Object instance rather than to an API endpoint or a scope string — "authorized to modify bookings" is different from "authorized to act on SO-uuid-1234 in state CONFIRMED with session_limit 3 transitions"
+- Enforce that sub-agent mandates in a MAD delegation tree are cryptographic subsets of the parent mandate — issueSubMandate() derives a child MJWT whose Cedar action set is a strict subset of the parent; MANDATE_NARROWING_VIOLATION is the kernel error for any attempt to violate this property
+- Protect the agent from privilege escalation attacks — prompt injection or adversarial inputs cannot cause the agent to exceed the MJWT ceiling; the MJWT is the authority boundary that the GEC enforces regardless of what the agent requests
+- Carry temporal and resource budget constraints as mandate-level claims — iteration_time_budget, token_budget, memory_quota, tool_call_budget are MJWT fields that the GEC enforces as hard ceilings
+
+---
+
+## SECTION 3 — Key Normative Concepts
+
+These terms are normative in MJWT-01 and must not be paraphrased away:
+
+SO-scoped claims (so_id / state_constraint / session_limit):
+   The three MJWT claims that bind the mandate to a specific Sovereign Object instance:
+   so_id: the UUID of the specific SO instance this mandate authorizes action on
+   state_constraint: the SO states in which this mandate is valid; the GEC rejects mandate use if the SO has transitioned to a state outside state_constraint
+   session_limit: the maximum number of GEC.transition() calls this mandate authorizes; the GEC revokes the mandate on exhaustion
+
+GEC-validated conditional claims:
+   MJWT claims whose validity depends on current SO state, not just on the token's cryptographic integrity. A GEC will validate an MJWT whose signature is valid but whose state_constraint no longer matches the SO's current state — the token is cryptographically valid but operationally expired. The GEC checks both dimensions; JWT libraries check only the signature.
+
+issueSubMandate():
+   The kernel function that derives a child MJWT from a parent MJWT in a MAD delegation tree. The child Cedar action set MUST be a strict subset of the parent's action set. The kernel enforces this as a structural invariant at issuance time; if the proposed child action set is not a strict subset, the GEC returns MANDATE_NARROWING_VIOLATION and refuses the issuance. The child MJWT cannot be minted without this kernel validation.
+
+MANDATE_NARROWING_VIOLATION:
+   The GEC error returned when issueSubMandate() is called with a proposed child Cedar action set that is not a strict subset of the parent MJWT's action set. This is a kernel-level rejection — the child MJWT is not produced. The narrowing property is enforced at issuance, not at evaluation time.
+
+Resource budget claims (temporal and computational):
+   MJWT carries resource ceiling claims that the GEC enforces:
+   iteration_time_budget: maximum wall-clock time per AEP iteration
+   token_budget: maximum cumulative token consumption for the session
+   memory_quota: maximum memory items accessible
+   tool_call_budget: maximum tool calls for the session
+   These are ceilings, not allocations. Exhaustion triggers kernel-fired Proximity Events (DEADLINE_APPROACHING, ITERATION_STALLED, BUDGET_EXHAUSTED) before the hard ceiling is reached.
+
+---
+
+## SECTION 4 — Relationship to Adjacent Standards
+
+WIMSE (Workload Identity in Multi-System Environments):
+   MJWT profiles WIMSE workload credentials with SO-scoped claims. WIMSE provides the workload identity foundation (SVIDs, credential lifecycle); MJWT adds the governance layer (SO binding, Cedar action set ceiling, resource budgets). WIMSE is the agent's passport; MJWT is the authorization permit. These are complementary credentials at adjacent layers: a WIMSE SVID authenticates the agent; an MJWT authorizes what the authenticated agent may do to a specific SO.
+
+OAuth 2.1 and RFC 9396 (Rich Authorization Requests):
+   MJWT is not an OAuth access token, but it is compatible with the RAR pattern: the Cedar action set in the MJWT corresponds to the authorization_details in an RFC 9396 rich authorization request. MJWT issuance can be triggered by an OAuth authorization server using RFC 9396 with Cedar policy sets as the authorization payload.
+
+RFC 8693 (Token Exchange):
+   MAD's BUDGET_TRANSFER mechanism requires MJWT reissuance via the token exchange pattern when resource budget is transferred between cluster agents. RFC 8693 is the token exchange foundation; MJWT is the token format being exchanged.
+
+Karl McGuinness (OAuth Actor Profile / Mission Bound Authorization):
+   MJWT's mission-bound authorization model — where the MJWT is scoped to a specific mission (SO instance) rather than to general API access — is directly related to McGuinness's Mission Bound Authorization work. MJWT cites this work as a foundational reference for the SO-binding design.
+
+---
+
+## SECTION 5 — Normative SOOS Cross-References
+
+This draft depends on:
+   SOV (draft-sato-soos-sov-01) — every MJWT references a specific SO instance via so_id; the SO Type's registered state space defines the valid state_constraint values
+   KIA (draft-sato-soos-kia-02) — MJWTs are validated by the GEC using the GIK keypair defined in KIA; the GEC's Attestation Manifest binds the MJWT validation logic
+
+The following drafts depend on this draft:
+   IDP (draft-sato-soos-idp-04) — the GEC will not honor an MJWT without an accompanying IDP; the MJWT reference is a required IDP field
+   MAD (draft-sato-soos-mad-02) — issueSubMandate() derives child MJWTs from parent MJWTs; BUDGET_TRANSFER requires MJWT reissuance; all cluster sub-agent authority flows through MJWT
+   PT (draft-sato-soos-pt-02) — PT tokens operate within the MJWT authority ceiling; a scope expansion that would exceed the MJWT ceiling is rejected by the GEC
+   AEP (draft-sato-soos-aep-01) — the aep_iteration counter in AEP is bounded by the session_limit claim in the MJWT; resource budget Proximity Events in AEP's SENSE phase fire relative to MJWT resource ceiling claims
+
+---
+
+## SECTION 6 — Vienna / Datatracker Status
+
+Draft identifier: draft-sato-soos-mjwt-01
+Submission date: June 10, 2026
+Current version: -01
+Status: Active Individual Submission, IETF Datatracker
+Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-mjwt/
+Draft page: https://soosproject.ai/drafts/mjwt
+Root llms.txt: https://soosproject.ai/llms.txt
+
+Target WG engagement at IETF 126 Vienna (July 18–24, 2026):
+   WIMSE — MJWT is the primary WIMSE-adjacent SOOS artifact; the WIMSE/MJWT complementarity (passport vs. permit) is a natural WIMSE discussion. Exploring MJWT as a formal WIMSE AI agent governance profile.
+   OAUTH WG — MJWT's relationship to RFC 9396 (RAR) and RFC 8693 (Token Exchange) makes it relevant to the OAUTH WG's ongoing AI agent authorization discussions.

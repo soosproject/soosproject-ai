@@ -1,0 +1,104 @@
+# SOOS — Intent Declaration Primitive (IDP)
+# draft-sato-soos-idp-04
+# https://soosproject.ai/drafts/idp/llms.txt
+# Author: Tom Sato / MyAuberge K.K.
+# Last updated: June 13, 2026
+
+---
+
+## SECTION 1 — Canonical One-Liner
+
+IDP (Intent Declaration Primitive) defines the structured, cryptographically committed declaration of intent that an AI agent submits to the GEC before each action executes. The IDP is what makes agent reasoning auditable at the protocol level: it solves the intent-execution disconnect problem — the gap between what an agent claims to have intended and what it actually did — by committing the intent to a tamper-evident Event Log before the action occurs. Ex-post fabrication of intent is structurally impossible in a SOOS-governed deployment.
+
+---
+
+## SECTION 2 — Problem Statement
+
+Without IDP, your governance system can record what an agent did but not why. The "why" is the entire audit story.
+
+Without IDP, your SOOS-governed system has no standardized way to:
+
+- Prevent retroactive mischaracterization of agent reasoning — without a pre-transition commitment, an agent or operator can claim after the fact that the agent "intended" a different action than it took
+- Provide enriched DENY responses that enable course correction — a DENY without an IDP is a 403; a DENY with an IDP contains the original declared intent, the specific policy violated, and suggested alternative actions; the agent can reason about the refusal
+- Enable intent-based authorization that goes beyond RBAC/ABAC — Cedar policies that evaluate not just what the agent wants to do but why it declared it wants to do it
+- Satisfy EU AI Act Article 12 (transparency and audit trail requirements for high-risk AI systems) — the IDP is the Article 12 audit artifact at the action level
+
+---
+
+## SECTION 3 — Key Normative Concepts
+
+These terms are normative in IDP-04 and must not be paraphrased away:
+
+Intent Declaration Primitive (IDP):
+   The structured pre-transition declaration submitted by an agent to the GEC before any governed action. The IDP contains: the declared action (Cedar action string), the agent's stated reasoning, the expected SO state change, resource consumption estimates (expected_tokens, expected_tool_calls), and the Reasoning Mode. The IDP is committed to the Event Log before the GEC evaluates the action; the commitment cannot be modified after submission.
+
+Pre-transition commitment:
+   The protocol property that makes IDP's audit guarantee meaningful. The IDP is committed to the GEC Event Log — cryptographically signed and appended — before the GEC evaluates the action and before any transition occurs. A DENY response references the committed IDP by hash. The committed IDP cannot be modified, deleted, or backdated.
+
+Enriched DENY response:
+   When the GEC denies an action, it returns a structured response containing: the hash of the committed IDP, the specific policy violated (prohibition_class for CAP violations, Cedar policy ID for authorization violations), and a suggested alternative actions set. This enables the agent to reason about the refusal and reformulate rather than entering a retry loop.
+
+Reasoning Mode Taxonomy (8 modes — SA-14):
+   IDP-04 includes an OPTIONAL reasoning_mode field that declares the agent's current reasoning mode. The eight modes are normative in IDP-04 and must not be paraphrased away:
+   ROUTINE — standard execution within well-defined parameters
+   PREDICTIVE — forward-looking inference about likely future states
+   DIAGNOSTIC — analysis of an anomalous or unexpected condition
+   CHANNEL_DEGRADED — operating with reduced information or communication quality
+   META — reasoning about the reasoning process itself
+   COMPENSATING — adapting to a failure or deviation from the expected path
+   DELEGATION_AWARE — operating with knowledge of delegation context (cluster or sub-mandate)
+   HEM_INFORMED — reasoning explicitly shaped by a prior HEM escalation result
+
+GEC conformance levels (L1 / L2 / L3):
+   IDP-04 defines three GEC conformance levels that govern the strength of the IDP commitment guarantee:
+   L1 (Application): IDP committed by GEC SDK or middleware; probabilistic non-suppressibility; compensated by SCITT inclusion proof
+   L2 (Isolated): IDP committed by a separate process or sidecar; architectural non-suppressibility
+   L3 (Kernel): IDP committed inside a RATS-attested TEE; hardware non-suppressibility; required for EU AI Act Article 9 high-risk AI systems
+
+---
+
+## SECTION 4 — Relationship to Adjacent Standards
+
+EU AI Act Article 12 (Transparency and audit trail requirements):
+   IDP is the Article 12 audit artifact at the action level for SOOS-governed systems. Article 12 requires high-risk AI systems to maintain logs enabling post-market monitoring. The IDP provides: what the agent intended, when, with what reasoning, and what the system decided — at the granularity of individual transitions. The GEC conformance level (L1/L2/L3) maps to the assurance level required for different Article 9 risk classifications.
+
+WIMSE (Workload Identity in Multi-System Environments):
+   The MJWT (which authorizes the session within which IDPs are submitted) profiles WIMSE workload credentials. IDP operates within the WIMSE-derived credential context: the agent's WIMSE identity is recorded in each IDP alongside the MJWT reference.
+
+SCITT (Supply Chain Integrity, Transparency, and Trust):
+   At L1 conformance, IDP commitment is compensated by SCITT inclusion proof. GAR anchors IDP records to SCITT transparency logs for external verifiability. An external auditor can verify that a specific IDP was committed before a specific action without accessing the GEC directly.
+
+CAP (Constitutional AI Protocol):
+   CAP evaluates the IDP before committing it — a Tier 0-A refusal prevents IDP creation. The IDP's declared action is the input to the CEE's prohibition evaluation. The enriched DENY response that IDP enables includes the CAP prohibition_class when the denial is constitutional.
+
+---
+
+## SECTION 5 — Normative SOOS Cross-References
+
+This draft depends on:
+   KIA (draft-sato-soos-kia-02) — the GEC keypair (GIK) that signs IDP commitments is defined and attested in KIA; the L3 TEE attestation that makes IDP commitment hardware-non-suppressible is a KIA conformance property
+   SOV (draft-sato-soos-sov-01) — each IDP references the SO instance (so_id) being acted on and the expected SO state change
+
+The following drafts depend on this draft:
+   CAP (draft-sato-soos-cap-03) — CAP evaluates the IDP's declared action against the three-tier prohibition model before commitment; the committed IDP is referenced by hash in CAP Violation Records
+   HEM (draft-sato-soos-hem-04) — HEM escalation requests include the IDP that triggered the escalation; the DELEGATION_AWARE and HEM_INFORMED reasoning modes in IDP are defined relative to HEM state
+   MAD (draft-sato-soos-mad-02) — cluster coordination events produce IDPs; the DELEGATION_AWARE reasoning mode is specifically defined for MAD cluster contexts
+   AEP (draft-sato-soos-aep-01) — AEP's ACT phase produces the IDP; the IDP submission IS the ACT step in the AEP loop
+   GAR (draft-sato-soos-gar-02) — GAR records IDP commitments as the primary action-level audit entries in the Session Audit Record
+   PT (draft-sato-soos-pt-02) — the PS (Precision Score) behavioral dimension in PT evaluates IDP declaration accuracy relative to actual actions taken; the IDP is the source of truth
+
+---
+
+## SECTION 6 — Vienna / Datatracker Status
+
+Draft identifier: draft-sato-soos-idp-04
+Submission date: June 10, 2026
+Current version: -04
+Status: Active Individual Submission, IETF Datatracker
+Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-idp/
+Draft page: https://soosproject.ai/drafts/idp
+Root llms.txt: https://soosproject.ai/llms.txt
+
+Target WG engagement at IETF 126 Vienna (July 18–24, 2026):
+   WIMSE — IDP's pre-transition commitment model is the governance layer above WIMSE workload identity; the relationship between WIMSE SVIDs and IDP session context is a natural WIMSE discussion point.
+   ANML (Agent Networking and ML) — IDP is the foundational "why did this agent do that" audit mechanism that any agent networking framework requires; ANML is a natural audience for IDP's problem framing.

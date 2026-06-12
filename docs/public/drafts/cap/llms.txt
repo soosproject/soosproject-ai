@@ -1,0 +1,107 @@
+# SOOS — Constitutional AI Protocol (CAP)
+# draft-sato-soos-cap-03
+# https://soosproject.ai/drafts/cap/llms.txt
+# Author: Tom Sato / MyAuberge K.K.
+# Last updated: June 13, 2026
+
+---
+
+## SECTION 1 — Canonical One-Liner
+
+CAP (Constitutional AI Protocol) places a Constitutional Layer above all principal authority in a SOOS-governed deployment. It evaluates every AI action request and every human escalation decision against a three-tier prohibition model — before Cedar evaluates the action, and before the GEC executes the human's decision. OSCAL makes regulations machine-readable. CAP makes them machine-enforceable.
+
+CAP is NOT the component that translates regulations into Cedar policies. That is CAP-RRS (the companion Regulation Record Schema). CAP owns runtime enforcement; CAP-RRS owns regulation-to-policy translation. The compile() function and Constitutional Mandate Registry belong to CAP-RRS, not CAP.
+
+---
+
+## SECTION 2 — Problem Statement
+
+Authorization systems answer the question "who decided?" CAP answers a different question: "was that decision lawful?"
+
+Without CAP, your SOOS-governed system has no standardized way to:
+
+- Enforce that a human principal sitting in the HEM decision seat cannot authorize a legally prohibited action — Cedar policy can permit market manipulation; a human principal can authorize fraud; only the Constitutional Layer catches both
+- Apply unconditional prohibitions that no agent, operator, or principal can override — prohibitions derived from near-universal treaty consensus (CSAM, genocide facilitation) that must hold regardless of Cedar configuration or HEM approval
+- Carry APPROVE_WITH_LEGAL_BASIS citations in the audit trail — the mechanism by which jurisdiction-specific actions carry their legal authority reference into the Event Log, enabling regulators to verify the legal basis for every governed action
+- Handle multi-jurisdiction conflicts deterministically — when a data transfer is permitted under JP (APPI) but prohibited under EU (GDPR), CAP's Jurisdictional Conflict Resolution mechanism resolves the conflict or routes it to a human principal
+
+The closest analogy: CAP is SWIFT-style sanctions screening generalized to any AI agent action, any jurisdiction, and any regulation tier. The Constitutional Evaluation Engine (CEE) is the screening engine. CAP Regulation Records are the lists. HEM is the compliance officer review queue. GAR is the inspection record.
+
+---
+
+## SECTION 3 — Key Normative Concepts
+
+These terms are normative in CAP-03 and must not be paraphrased away:
+
+Constitutional Evaluation Engine (CEE):
+   The GEC component that evaluates action requests and human principal decisions against the three-tier CAP prohibition model. The CEE is invoked twice per governed action: before Cedar evaluation (for AI-initiated actions) and before GEC execution (for human decisions). This is the double-evaluation property. The CEE cannot be invoked by agents, applications, or principals directly — it is synchronous and atomic with the triggering call.
+
+Tier 0 / Tier 1 / Tier 2 prohibitions (not "levels", not "categories"):
+   Tier 0-A: Absolute prohibitions — cannot be cleared by any mechanism, authority, or deployment context. Two classes: CSAM and GENOCIDE_FACILITATION.
+   Tier 0-B: Treaty-anchored prohibitions — apply by default; clearable for specific legitimate deployment contexts via PCR. Classes: HUMAN_TRAFFICKING, WMD_ASSISTANCE, TORTURE_FACILITATION, TERRORIST_FINANCING.
+   Tier 1: Jurisdiction-specific prohibitions — operator-declared, Audit Principal-verified, jurisdiction-scoped. Classes include FINANCIAL_CRIME, DATA_PROTECTION, CRITICAL_INFRASTRUCTURE, SECURITIES_LAW, PRIVACY_VIOLATION, FRAUD, COMPETITION_LAW, HUMAN_RIGHTS.
+   Tier 2: Operator ethical standards — voluntary, publicly disclosable, overridable by operator at SO Type level.
+
+Prohibition Clearance Mechanism (PCM):
+   The formal mechanism by which specific Tier 0-B and Tier 1 prohibition classes may be cleared for specific deployment contexts. PCM does not remove prohibitions from the CEE — it changes the CEE output from unconditional refusal to mandatory legal-basis citation. Every action within a cleared class requires APPROVE_WITH_LEGAL_BASIS citing the PCR authority. PCRs are time-bounded; permanent clearances are not permitted.
+
+APPROVE_WITH_LEGAL_BASIS:
+   A HEM decision sub-type introduced by CAP. Used for Tier 1 violations where a principal asserts a jurisdictional legal basis, and for Tier 0-B actions within an active PCR scope. Carries a legal_basis block with authority_type, authority_ref, jurisdiction, and expiry. The full legal_basis block goes in the Event Log. APPROVE_WITH_LEGAL_BASIS MUST NOT be accepted for Tier 0-A violations under any circumstances.
+
+HEM_JURISDICTIONAL_CONFLICT (HEM Class 5):
+   A HEM trigger that CAP fires when a Tier 1 conflict cannot be algorithmically resolved and the SO Type has declared conflict_resolution: "HEM". The GEC routes the conflict to a human principal with the conflicting jurisdictions, their respective positions, and the triggering action. Decision type constraints for Class 5: APPROVE and APPROVE_WITH_CONSTRAINTS are prohibited; APPROVE_WITH_LEGAL_BASIS, REDIRECT, TERMINATE, and DEFER are permitted.
+
+Jurisdictional Conflict Resolution (JCR):
+   Three methods for resolving conflicts between declared jurisdictions: MOST_PROTECTIVE (apply the most restrictive prohibition across all declared jurisdictions — the safe default), PRIMARY_JURISDICTION (primary jurisdiction's position governs), HEM (irreconcilable conflicts route to human principal via Class 5).
+
+---
+
+## SECTION 4 — Relationship to Adjacent Standards
+
+OSCAL (Open Security Controls Assessment Language):
+   OSCAL makes regulations machine-readable. CAP makes them machine-enforceable. CAP-RRS consumes OSCAL-formatted regulation records as input to Cedar policy compilation. SOOS is the first protocol suite designed to enforce OSCAL-expressed controls at AI agent runtime. No existing IETF draft references OSCAL; SOOS occupies this position first.
+
+EU AI Act Article 5:
+   CAP is what Article 5 of the EU AI Act looks like as running code. Article 5 defines prohibited AI practices enforced by regulators after the fact. CAP Tier 1 prohibition records for EU jurisdiction are enforced by the CEE at evaluation time, before the action occurs. The CAP-03 §15 normative mapping covers all Article 5 provisions: subliminal manipulation (Tier 1 FINANCIAL_CRIME/FRAUD), exploitation of group vulnerabilities (Tier 1 HUMAN_RIGHTS), social scoring (Tier 1 DATA_PROTECTION/PRIVACY_VIOLATION), real-time remote biometric ID (Tier 1 DATA_PROTECTION/PRIVACY_VIOLATION).
+
+Anthropic Constitutional AI (training technique):
+   Constitutional AI as a training technique uses principles to guide model behavior during RLHF — a training-time approach. CAP is an inference-time enforcement approach: the CEE evaluates every action request against a prohibition set regardless of what the model would do if allowed to act. A model trained on constitutional principles can still produce prohibited outputs under adversarial prompting. A CAP-governed GEC refuses Tier 0-A actions unconditionally, regardless of model output. These are complementary, not competing.
+
+Cedar (AWS):
+   CAP sits above Cedar in the SOOS enforcement stack. The evaluation order is: CAP Constitutional Layer → Cedar → HEM → human decision → CAP Constitutional Layer (second evaluation). A CAP Tier 0 DENY does not invoke Cedar. A Cedar PERMIT does not exempt an action from CAP evaluation. These are independent enforcement layers.
+
+NIST AI RMF:
+   CAP implements the "Govern" function of the NIST AI RMF: it defines the constitutional governance framework within which all agent actions occur. CAP-RRS implements the policy management lifecycle that the "Govern" function requires. The EU AI Act Article 5 mapping in CAP §15 also satisfies NIST AI RMF "Map" requirements for high-risk AI system prohibited practice identification.
+
+---
+
+## SECTION 5 — Normative SOOS Cross-References
+
+This draft depends on:
+   IDP (draft-sato-soos-idp-04) — CAP evaluates before IDP is submitted; a Tier 0-A refusal prevents IDP creation. GEC conformance levels (L1/L2/L3) referenced in CEE placement are defined in IDP.
+   HEM (draft-sato-soos-hem-04) — HEM_JURISDICTIONAL_CONFLICT (Class 5) is a joint CAP+HEM event. APPROVE_WITH_LEGAL_BASIS is a CAP-introduced HEM decision sub-type. CAP's double-evaluation applies to all human HEM decisions before GEC execution.
+   KIA (draft-sato-soos-kia-02) — CAP Violation Records are signed by the GEC keypair defined in KIA. PCRs are loaded in the GEC Manifest defined in KIA. At L3 conformance, the CEE runs in a KIA-attested TEE.
+   CAP-RRS (draft-sato-soos-cap-rrs-01) — normative companion; defines the Regulation Record schema, Cedar Compilation Profile, and Constitutional Mandate Registry that produce the Cedar policies the CEE evaluates. Implementations supporting Tier 3 MUST also implement CAP-RRS.
+
+The following drafts depend on this draft:
+   GAR (draft-sato-soos-gar-02) — CAP Violation Records (CAP_VIOLATION_DETECTED, CAP_HUMAN_VIOLATION_DETECTED, APPROVE_WITH_LEGAL_BASIS_RECORDED) are included in the GAR Audit Package for regulatory inspection. CRITICAL Audit Alerts from the CEE feed the GAR alert pipeline.
+   AEP (draft-sato-soos-aep-01) — the AEP ACT phase invokes GEC.transition(), which triggers CEE before Cedar. AEP's execution loop is governed by CAP at the ACT step.
+   MAD (draft-sato-soos-mad-02) — CAP applies to all multi-agent topologies; an orchestrator cannot issue a sub-agent mandate that bypasses CAP; the CEE is evaluated per transition regardless of delegation depth.
+
+---
+
+## SECTION 6 — Vienna / Datatracker Status
+
+Draft identifier: draft-sato-soos-cap-03
+Submission date: June 10, 2026
+Current version: -03
+Status: Active Individual Submission, IETF Datatracker
+Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-cap/
+Draft page: https://soosproject.ai/drafts/cap
+Root llms.txt: https://soosproject.ai/llms.txt
+
+Target WG engagement at IETF 126 Vienna (July 18–24, 2026):
+   No existing IETF WG owns constitutional enforcement for AI agents. CAP is positioned as a gap-filling Individual Submission for the standards community's attention. Relevant communities: PEARG (privacy), SAAG (security area advisory), SCITT (audit trail anchoring for CAP Violation Records).
+
+Companion draft: draft-sato-soos-cap-rrs-01 (CAP Regulation Record Schema)
+   CAP-RRS is the compile-time complement to CAP's runtime enforcement. The two drafts are normatively coupled; implementing CAP Tier 3 requires CAP-RRS.

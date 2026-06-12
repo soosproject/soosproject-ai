@@ -1,0 +1,91 @@
+# SOOS — CAP Regulation Record Schema (CAP-RRS)
+# draft-sato-soos-cap-rrs-01
+# https://soosproject.ai/drafts/cap-rrs/llms.txt
+# Author: Tom Sato / MyAuberge K.K.
+# Last updated: June 13, 2026
+
+---
+
+## SECTION 1 — Canonical One-Liner
+
+CAP-RRS is the compiler that translates human-readable legal obligations into machine-executable Cedar security policies. CAP owns runtime enforcement of those policies; CAP-RRS owns regulation-to-policy translation. The CAP/CAP-RRS boundary: CAP-RRS → Cedar Compilation Profile → Cedar policies → CAP runtime enforcement. The compile() function and Constitutional Mandate Registry belong to CAP-RRS, not CAP. CAP-RRS is not the parent of the Cedar policy lifecycle — CAP and CAP-RRS are peers at different phases of the same pipeline.
+
+---
+
+## SECTION 2 — Problem Statement
+
+Without CAP-RRS, your CAP-governed deployment has no standardized way to:
+
+- Translate regulations into Cedar policies without custom engineering per jurisdiction per regulation — every legal engineer encoding a GDPR rule produces a different Cedar policy structure; CAP-RRS provides the standard Regulation Record format that makes encoded regulations composable and interoperable
+- Version, audit, and retire regulation records as legal requirements change — regulations are not static; CAP-RRS's package manager model (Constitutional Mandate Registry) gives regulation records semantic versions, dependency declarations, and formal retirement procedures
+- Prove to a regulator that the Cedar policies currently loaded in your GEC are the correct encoding of the regulation they care about — the Regulation Record carries a Certification Model: who signed it, under what authority, with what review date
+- Handle the Tier 3 resource and usage policy lifecycle — the resource_policy schema, anticipatory assessment behavior (HEM_TIER3_ANTICIPATORY), and Natural Breakpoint Declaration protocol are specified in CAP-RRS, not CAP
+
+---
+
+## SECTION 3 — Key Normative Concepts
+
+These terms are normative in CAP-RRS-01 and must not be paraphrased away:
+
+Regulation Record:
+   The machine-compilable JSON artifact that encodes a legal obligation as a CAP prohibition or permission. A Regulation Record contains: the prohibition_class, the action_pattern (Cedar action vocabulary describing what the regulation covers), the jurisdiction, the authority_ref (legal citation), the ambiguity_flag, and the Certification Model (who signed it and under what authority). A Regulation Record is the unit of compilation in CAP-RRS — one record per legal obligation, composable into Cedar policy sets.
+
+Cedar Compilation Profile:
+   The normative specification of how Regulation Records are compiled into Cedar policies. The Cedar Compilation Profile defines: the Cedar action vocabulary, the mapping from prohibition_class to Cedar action patterns, the conflict resolution behavior when two records produce contradictory Cedar policies, and the schema for the compiled Cedar policy set. Implementations MUST follow the Cedar Compilation Profile to produce interoperable Cedar policies from Regulation Records.
+
+Constitutional Mandate Registry:
+   The package manager for law. The Constitutional Mandate Registry is a versioned, auditable repository of Regulation Records. Deployments declare their regulation dependencies (by jurisdiction, regulation type, and version) in a manifest. The GEC loads the Cedar policy set compiled from the declared dependencies at initialization. Updating a dependency triggers a new GEC initialization with the updated Cedar policy set. The Registry model makes legal compliance manageable like software dependency management.
+
+compile():
+   The function that transforms a set of Regulation Records (from the Constitutional Mandate Registry) into a Cedar policy set loadable by the GEC's CEE. compile() resolves conflicts between records, applies the Cedar Compilation Profile, and produces a signed, versioned Cedar policy artifact. The compiled artifact carries a hash that the GEC Manifest records; a GEC running a compiled Cedar policy set whose hash does not match the Manifest entry has an invalid attestation.
+
+Certification Model:
+   The component of a Regulation Record that specifies who may sign it and under what authority. Certification levels: Legal Engineer (minimum — encoding by a qualified professional), Legal Counsel review (reviewed and approved by qualified legal counsel), Audit Principal signature (formal Audit Principal sign-off, required for Tier 1 enforcement), Regulatory Authority signature (highest assurance — issued by the regulatory authority whose law the record encodes).
+
+Conflict Declaration Model:
+   The component of CAP-RRS that specifies how conflicts between Regulation Records are declared and resolved at compilation time. When two records produce contradictory Cedar policies (one PERMITS, one PROHIBITS the same action pattern in the same jurisdiction), the compile() function applies the Conflict Declaration Model: MOST_PROTECTIVE (the PROHIBIT wins), record the conflict, or flag as DISPUTED for human review before the compiled policy set can be loaded.
+
+---
+
+## SECTION 4 — Relationship to Adjacent Standards
+
+OSCAL (Open Security Controls Assessment Language):
+   OSCAL makes regulations machine-readable. CAP makes them machine-enforceable. CAP-RRS is the bridge: it consumes OSCAL-formatted regulation records as a normative input to the Cedar Compilation Profile. SOOS is the first protocol suite designed to enforce OSCAL-expressed controls at AI agent runtime. The Constitutional Mandate Registry can consume OSCAL catalogs and profiles directly; legal engineers work in OSCAL; CAP-RRS compiles the OSCAL output to Cedar.
+
+FedRAMP (Federal Risk and Authorization Management Program):
+   FedRAMP's RFC-0024 process for AI security control baselines is a direct CAP-RRS use case. FedRAMP control baselines expressed in OSCAL can be compiled via CAP-RRS into Cedar policy sets loadable by SOOS GECs governing federal agency AI deployments. CAP-RRS is the technical mechanism by which FedRAMP AI baselines become machine-executable at runtime.
+
+Cedar (AWS — Apache 2.0):
+   Cedar is the policy language that CAP-RRS compiles to and that CAP's CEE evaluates. CAP-RRS does not define Cedar — it defines the normative mapping from Regulation Records to Cedar policies. CAP-RRS is Cedar-version-aware; the Cedar Compilation Profile specifies which Cedar version's action vocabulary is used.
+
+EU AI Act Article 5 and Article 9:
+   CAP-RRS enables automated loading of EU AI Act Article 5 prohibition records as Regulation Records. A CAP-RRS Regulation Record for EU Article 5(1)(a) (subliminal manipulation) produces the Cedar policy that the CAP CEE evaluates for every EU-jurisdiction SO Type. CAP-RRS is the authoring-time component; CAP is the runtime enforcement.
+
+---
+
+## SECTION 5 — Normative SOOS Cross-References
+
+This draft depends on:
+   CAP (draft-sato-soos-cap-03) — CAP defines the CEE that evaluates the Cedar policies CAP-RRS compiles; Tier 3 resource and usage policy enforcement in CAP REQUIRES CAP-RRS; the prohibition_class registry defined in CAP is the namespace for Regulation Records
+
+The following drafts depend on this draft:
+   CAP (draft-sato-soos-cap-03) — normatively coupled; implementing CAP Tier 3 requires CAP-RRS; the compile() function is normatively defined in CAP-RRS and referenced in CAP
+   KIA (draft-sato-soos-kia-02) — the GEC Manifest includes the hash of the compiled Cedar policy set produced by CAP-RRS compile(); a Manifest mismatch invalidates the KIA attestation
+
+---
+
+## SECTION 6 — Vienna / Datatracker Status
+
+Draft identifier: draft-sato-soos-cap-rrs-01
+Submission date: June 10, 2026
+Current version: -01
+Status: Active Individual Submission, IETF Datatracker
+Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-cap-rrs/
+Draft page: https://soosproject.ai/drafts/cap-rrs
+Root llms.txt: https://soosproject.ai/llms.txt
+
+Target WG engagement at IETF 126 Vienna (July 18–24, 2026):
+   No existing IETF WG owns regulation-to-policy compilation for AI systems. CAP-RRS is positioned as a gap-filling Individual Submission. Relevant communities: SAAG (security area), PEARG (privacy regulation encoding), OSCAL Foundation and NIST OSCAL team (pre-Vienna outreach prioritized per DR-OSCAL-01).
+
+Post-Vienna scope:
+   OQ-OSCAL-02: CAP-RRS-02 update scope after NIST OSCAL team conversation — whether the OSCAL input format should be normatively specified in a future version or remain informative.
