@@ -1,7 +1,7 @@
 ---
 layout: home
 hero:
-  name: "SOOS Project"
+  name: "Sovereign Object OS Project"
   text: "12 open protocols that make agentic AI reliable enough to deploy at enterprise scale."
   tagline: "More control over what your agents do. More confidence in what they produce. More capability to deploy them where it counts."
   actions:
@@ -36,7 +36,7 @@ features:
 
 ## Better control means better software.
 
-Today, every team building with AI agents solves the same problems from scratch — how to keep agents on task, how to stop them when something goes wrong, how to know what they actually did. SOOS solves those problems once, at the right layer, as open standards anyone can use.
+Today, every team building with AI agents solves the same problems from scratch  Ehow to keep agents on task, how to stop them when something goes wrong, how to know what they actually did. SOOS solves those problems once, at the right layer, as open standards anyone can use.
 
 An agent with a signed intent declaration can safely be given wider scope. An agent with progressive trust accumulation earns authorization based on its actual track record. An agent with a complete execution record is debuggable in minutes, not days. The engineering properties and the operational properties are the same properties.
 
