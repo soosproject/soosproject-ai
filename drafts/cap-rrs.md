@@ -45,6 +45,14 @@ The RFC Only procedure in CAP provides an additional path for regulations that c
 
 For collaboration on jurisdiction-specific Regulation Record encoding: [tomsato@myauberge.jp](mailto:tomsato@myauberge.jp)
 
+### Government
+
+CAP-RRS is the mechanism by which a jurisdiction's regulatory prohibitions become enforced at the AI kernel layer. The founding period of the Constitutional Mandate Registry (CMR) is the window in which jurisdictions can shape the schema — the fields, the tier assignments, the SCITT profile — before it becomes the de facto standard for regulation encoding across conforming SOOS deployments.
+
+Jurisdictions that encode their regulations in CAP-RRS format gain three things: machine-verifiable enforcement (the Cedar policy is evaluated by the kernel before every action), version-controlled provenance (every change to a Regulation Record is tracked and auditable), and cross-deployment consistency (the same record, loaded in any conforming SOOS kernel, produces the same enforcement result).
+
+For collaboration on jurisdiction-specific regulation encoding: [tomsato@myauberge.jp](mailto:tomsato@myauberge.jp)
+
 ### Agentic AI and coding assistants
 
 **What to tell your coding assistant:**
@@ -85,14 +93,6 @@ For collaboration on jurisdiction-specific Regulation Record encoding: [tomsato@
   "rfc_only": false
 }
 ```
-
-### Government and regulators
-
-CAP-RRS is the mechanism by which a jurisdiction's regulatory prohibitions become enforced at the AI kernel layer. The founding period of the Constitutional Mandate Registry (CMR) is the window in which jurisdictions can shape the schema — the fields, the tier assignments, the SCITT profile — before it becomes the de facto standard for regulation encoding across conforming SOOS deployments.
-
-Jurisdictions that encode their regulations in CAP-RRS format gain three things: machine-verifiable enforcement (the Cedar policy is evaluated by the kernel before every action), version-controlled provenance (every change to a Regulation Record is tracked and auditable), and cross-deployment consistency (the same record, loaded in any conforming SOOS kernel, produces the same enforcement result).
-
-For collaboration on jurisdiction-specific regulation encoding: [tomsato@myauberge.jp](mailto:tomsato@myauberge.jp)
 
 ---
 
@@ -142,6 +142,8 @@ Japan's Financial Instruments and Exchange Act Article 38 prohibits solicitation
 
 **GDPR Article 22 / EU AI Act Article 13** require that individuals be informed of automated decision-making rules. The PTD framework in CAP-03 satisfies this at the kernel level; CAP-RRS Regulation Records provide the structured record of which legal prohibitions are active, available at SUMMARY or FULL disclosure level through the ptd_endpoint.
 
+**OSCAL (NIST Open Security Controls Assessment Language)** defines the Catalog and Profile formats by which regulatory control frameworks are expressed as machine-readable documents. CAP-RRS Regulation Records operate at the next layer: a Regulation Record consumes an OSCAL-expressed control obligation and produces the Cedar-compilable enforcement specification the kernel loads. The CAP-RRS → Cedar pipeline is the runtime enforcement complement to the OSCAL → SSP/Component Model declaration pipeline. OSCAL makes regulations machine-readable; CAP makes them machine-enforceable.
+
 ---
 
 ## Related work
@@ -149,6 +151,8 @@ Japan's Financial Instruments and Exchange Act Article 38 prohibits solicitation
 **CAP** ([/drafts/cap](/drafts/cap)) is the companion draft. CAP specifies the prohibition tier model and the Cedar evaluation engine; CAP-RRS specifies the Regulation Record schema that populates those tiers with actual legal content. CAP-RRS Regulation Records are the input format; CAP Cedar policies are the output format.
 
 **draft-ietf-scitt-architecture** — CAP-RRS Regulation Records are designed to be SCITT-compatible artefacts. The inclusion proof field in the Regulation Record schema references a SCITT receipt from the CMR transparency log.
+
+**NIST OSCAL** — no existing IETF draft references OSCAL. CAP-RRS is the first to bridge the OSCAL control catalog layer (machine-readable regulations) and the IETF enforcement layer (machine-enforceable Cedar policies at agent runtime).
 
 No competing draft specifies a machine-readable regulation encoding schema for AI kernel enforcement. CAP-RRS is the first attempt to define a standard format for the statute-to-Cedar translation artefact. Jurisdiction participation in the founding period of the CMR shapes the schema before it becomes the de facto standard.
 
