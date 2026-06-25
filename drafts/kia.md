@@ -25,6 +25,8 @@ KIA is directly relevant to the RATS (Remote ATtestation procedureS) working gro
 
 KIA is also relevant to the WIMSE working group. The GEC Manifest — the signed configuration document that KIA produces — is the natural home for the `ptd_endpoint` (Policy Transparency Disclosure, CAP-03 §12a) and the agent-kernel handshake parameters that WIMSE workload identity specifications reference.
 
+KIA further addresses a WIMSE gap that existing workload identity specifications have not reached: cross-principal identity correlation across independent trust domains. When two independently-principaled agents — each rooted in their own KIA-attested kernel, each operating under their own MJWT mandate — transact with each other, no standard primitive exists to correlate the governance records on both sides. KIA introduces the Cross-Principal Transaction ID (XPID): a deterministic identifier derived jointly from both agents' KIA identities and session parameters, with no trusted third party. Neither side can forge a valid XPID for a transaction the other did not participate in. Both kernels expose a derivation function; either side can independently verify the XPID. The result is tamper-evident, bilateral audit correlation across trust boundaries — using the same KIA identity infrastructure that WIMSE implementations already anchor. This is a concrete extension of WIMSE's scope from single-domain workload identity to cross-domain workload transaction governance.
+
 To engage on KIA: [IETF Datatracker](https://datatracker.ietf.org/doc/draft-sato-soos-kia/) · file issues at [GitHub](https://github.com/soosproject/soos-drafts)
 
 ### App builders
@@ -46,8 +48,7 @@ For insurance and audit purposes: the GEC Manifest is a signed, versioned artefa
 ### Agentic AI and coding assistants
 
 **What to tell your coding assistant:**
-
-> "I need to implement SOOS KIA (Kernel Identity Attestation, draft-sato-soos-kia-01). This is an IETF protocol that profiles RFC 9334 (RATS) for agentic AI governance kernels. KIA specifies three things: (1) the GEC Manifest — a signed JSON document the kernel produces about its own configuration, including Cedar policy hash, capability flags, and ptd_endpoint; (2) the agent-kernel handshake — the sequence by which a new agent session is established with kernel identity verification; (3) the Revocation Registry — the kernel-maintained list of mandate IDs that have been revoked. KIA-01 also adds the ptd_endpoint and ptd_current_version fields (SA-10) and the PTD Consistency requirement (CONF-KIA-15)."
+> "I need to implement SOOS KIA (Kernel Instance Attestation, draft-sato-soos-kia-01). This is an IETF protocol that profiles RFC 9334 (RATS) for agentic AI governance kernels. KIA specifies three things: (1) the GEC Manifest — a signed JSON document the kernel produces about its own configuration, including Cedar policy hash, capability flags, and ptd_endpoint; (2) the agent-kernel handshake — the sequence by which a new agent session is established with kernel identity verification; (3) the Revocation Registry — the kernel-maintained list of mandate IDs that have been revoked. KIA-01 also adds the ptd_endpoint and ptd_current_version fields (SA-10) and the PTD Consistency requirement (CONF-KIA-15)."
 
 **Key schema fields:**
 
@@ -136,13 +137,17 @@ Following an unexpected agent action, an audit team needs to verify that the ker
 
 An operator runs agents across kernels from two different vendors. Both implement SOOS KIA. The GEC Manifest format is standardised: both kernels produce the same schema, with the same capability flags, the same Cedar policy hash field. The operator's trust infrastructure evaluates both manifests through the same RATS verifier. Vendor-specific implementation details are hidden behind the KIA attestation interface.
 
+**Cross-principal transaction governance**
+
+A travel booking agent (principal: MyAuberge K.K.) needs to transact with a supplier agent (principal: Ponyhouse Farm) — two independent SOOS deployments, each with their own KIA-attested kernel. Before the transaction fires, both kernels jointly derive an XPID from their respective KIA identities and session parameters. Both sides' GAR records carry the XPID as a correlation field. A regulator reconstructing what happened can follow the transaction across both independent audit chains using the XPID — without either party disclosing their full audit record to the other.
+
 ---
 
 ## How this builds on existing work
 
 **RFC 9334 (RATS Architecture)** defines the general architecture for remote attestation procedures — attesters, verifiers, relying parties, evidence, and endorsements. KIA profiles RFC 9334 specifically for the agentic AI governance kernel use case, filling in the attester role (GEC), the evidence format (GEC Manifest), and the relying party integration pattern (agent-kernel handshake).
 
-**WIMSE (Workload Identity in Multi-System Environments)** addresses workload identity for service-to-service authentication. KIA addresses kernel identity — a more fundamental layer. The GEC Manifest is the natural WIMSE identity credential for a SOOS kernel, and KIA's handshake is the natural place for WIMSE SVID validation to occur.
+**WIMSE (Workload Identity in Multi-System Environments)** addresses workload identity for service-to-service authentication. KIA addresses kernel identity — a more fundamental layer. The GEC Manifest is the natural WIMSE identity credential for a SOOS kernel, and KIA's handshake is the natural place for WIMSE SVID validation to occur. KIA extends WIMSE's scope to cross-principal workload transactions via XPID — a primitive not yet present in WIMSE specifications.
 
 **SCITT (Supply Chain Integrity, Transparency and Trust)** provides transparency statement infrastructure for software artefacts. The GEC Manifest is a SCITT-eligible artefact: the kernel attesting its own configuration is a supply chain claim that can be anchored in a SCITT transparency log by operators requiring third-party verification.
 
@@ -165,6 +170,8 @@ An operator runs agents across kernels from two different vendors. Both implemen
 **Clock authority:** KIA-01 requires a normative clock source declaration in the GEC Manifest. Temporal governance depends on reliable timestamps. An implementation that does not declare a clock authority — or whose clock is manipulable by the agent — cannot make binding temporal claims in GAR records.
 
 **Revocation Registry integrity:** The Revocation Registry is an append-only kernel-maintained log of revoked mandate IDs. Implementations MUST NOT remove entries from the Revocation Registry. An agent that presents a mandate whose ID appears in the Revocation Registry MUST be rejected; the session is not established.
+
+**XPID security properties:** The XPID derivation uses UUID-v5 over both KIA identities, a shared timestamp, and independent entropy contributions (nonces) from both kernels. Neither kernel can unilaterally produce a valid XPID for a transaction the other did not participate in — the responding kernel's nonce contribution is required. Either side can independently verify the XPID from its own KIA identity and the session parameters, with no trusted third party.
 
 **Formal analysis status:** No formal verification of the agent-kernel handshake protocol has been conducted. The handshake is designed to be analysable with standard protocol analysis tooling; formal analysis is planned for post-Vienna.
 

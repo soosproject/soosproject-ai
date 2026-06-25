@@ -23,7 +23,9 @@ MJWT defines the Mandate JWT: the signed credential that encodes a principal's a
 
 MJWT is directly relevant to the OAUTH working group. It is a JWT profile — it builds on RFC 7519 (JWT), RFC 8693 (Token Exchange), and the OIDF-2025-01 threat model for agentic AI delegation. MJWT introduces claims that are not present in existing JWT profiles: `mandate_scope`, `resource_envelope`, `trust_floor`, `goal_scope`, and the `delegation_chain` array for attenuated delegation.
 
-MJWT is also relevant to the WIMSE working group. The delegation_chain claim encodes the principal hierarchy in a format that WIMSE workload identity specifications can reference when evaluating cross-workload delegation authority.
+MJWT is also relevant to the WIMSE working group. The `delegation_chain` claim encodes the principal hierarchy in a format that WIMSE workload identity specifications can reference when evaluating cross-workload delegation authority.
+
+MJWT-02 introduces a further WIMSE-relevant extension: the `consent_scope` claim. Where existing workload identity tokens carry authentication and authorisation context, `consent_scope` carries data governance state — the data subject's consent reference, purpose codes, governing law, and expiry — bound cryptographically to the mandate at issuance. This is a new category of claim for workload identity: the token does not merely assert what the workload may do, but under what legal consent the workload is operating. The Cedar policy engine evaluates `consent_scope` fields as execution context on every relevant action, and the GAR audit record carries mandatory provenance fields tracing each enforcement decision back to the specific law article that governed it. WIMSE implementations that carry MJWT mandate credentials gain a complete consent governance chain — from principal issuance through kernel enforcement to tamper-evident audit — without additional infrastructure.
 
 The relationship between MJWT and OAuth 2.0 token exchange (RFC 8693) is explicitly defined: MJWT tokens MAY be issued through a token exchange flow where the subject token is an OAuth access token and the requested token is a Mandate JWT. MJWT does not replace OAuth; it extends it for the kernel governance use case.
 
@@ -66,6 +68,7 @@ For legal non-repudiation: the MJWT is signed by the principal at issuance. The 
 | `resource_envelope` | object | Resource limits (see below) |
 | `delegation_chain` | array | Prior MJWT jti values in attenuation chain (if delegated) |
 | `pt_weights` | object | Per-dimension scoring weights for PT engine |
+| `consent_scope` | object | Optional: data subject consent state — reference, purpose codes, governing law, expiry |
 
 **Resource envelope fields:**
 
