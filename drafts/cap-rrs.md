@@ -134,6 +134,50 @@ Japan's Financial Instruments and Exchange Act Article 38 prohibits solicitation
 
 ---
 
+## How this works in practice
+
+A Regulation Record does not enforce itself. It is the artefact that makes enforcement possible — by expressing a legal obligation in a format the kernel reads, versioning it against the statute it encodes, and producing a tamper-evident audit record every time it governs an agent action. The full chain from law to audit record has four stages.
+
+### Stage 1 — From statute to Regulation Record
+
+A legal team identifies a statutory prohibition and translates it into a Cedar policy. The translation is not mechanical — it requires legal judgment about what the provision means and how it applies to AI agent actions. The Regulation Record captures both the translation (the Cedar policy text) and its provenance (the statute citation, the version of the law the policy was certified against, the identity and authority of the body that endorsed it).
+
+The **Law Reference Interface (LRI)** is the schema that makes this provenance machine-readable. Every Regulation Record carries an `authority_source` block that identifies: which law, which article, which statutory version, when the endorsement was made, and who made it. Any jurisdiction with a stable law publication system — a government URI for each statute, a versioned XML schema — can implement the LRI for their legal corpus. The endorsement is signed; the signature is the machine-readable assertion that the Cedar policy correctly encodes the statute.
+
+When a provision is internally ambiguous or conflicts with another provision, the endorsement carries a `resolution_basis` field that records the legal character of the endorsement — whether it is a straightforward encoding, a resolution of an internal conflict, or a coordination rule across statutes. This makes the legal act behind the endorsement auditable, not just the endorsement itself.
+
+### Stage 2 — From Regulation Record to kernel enforcement
+
+The kernel loads Regulation Records at deployment. Cedar evaluates the policy on every relevant agent action. On every `CEDAR_PERMIT` or `CEDAR_DENY`, the GAR audit record carries three mandatory provenance fields:
+
+- `cedar_policy_id` — the specific Cedar policy evaluated
+- `cap_rrs_control_id` — the OSCAL control ID linking back to the Regulation Record
+- `authority_source_uri` — the canonical URI of the law article that governs this action
+
+This is the chain from law to runtime decision. A regulator can query the audit record by law article and retrieve every agent action governed by that article, across every deployed kernel, for any time window — with a tamper-evident proof for each.
+
+### Stage 3 — When the law changes
+
+Legal text changes. When a statute is amended, the `amendment_detection_endpoint` in the Regulation Record's LRI is polled automatically (cadence ≤24 hours). On detection of an amendment posterior to the record's endorsement timestamp:
+
+1. The Cedar policy is **provisionally suspended** for new agent actions
+2. A `CATALOG_VERSION_CONFLICT` event is raised in GAR — recording the affected catalog entry, the amendment date, and the delta in days
+3. HEM escalation fires — no new agent action proceeds under the affected prohibition until re-endorsement or explicit human override
+
+When the interpretation of a statute changes — via a court judgment, binding guidance, or administrative ruling — without the statutory text itself being amended, a separate `INTERPRETATION_SUPERSEDED` event fires via the `interpretation_endpoint`. The mechanism is the same: provisional suspension, GAR event, HEM escalation. The distinction matters because interpretive change and statutory amendment have different legal characters and route to different endorsing authorities.
+
+**The statute-primacy rule is absolute.** A Cedar policy does not override a statute. A GAR record whose `authority_source` traces to a superseded statutory version is valid as a historical record but does not authorize future actions.
+
+### Stage 4 — Safe harbor for past actions
+
+When a statute or interpretation changes, the question arises: what is the status of agent actions taken *before* the change, under a then-valid endorsement? The GAR audit record is the answer. Every action record carries the `endorsed_at` timestamp of the endorsement that governed it, the version identifier of the statutory text that was current at that time, and — when a subsequent change occurs — the effective date of that change. The audit chain establishes that the action was taken under a valid, non-superseded endorsement at the time. Past actions are protected; future actions require re-endorsement.
+
+### What this means for multi-authority coordination
+
+Some legal obligations span jurisdictions or require coordination between legally distinct authorities. A Regulation Record that encodes a cross-authority coordination rule carries `co_endorsement_required: true` and a `co_endorsers` array identifying each required endorsing authority. The Cedar policy is not active until all required endorsements are present. If any co-endorser's endorsement is withdrawn or superseded, the policy is suspended — even if other co-endorsers' endorsements remain valid.
+
+---
+
 ## How this builds on existing work
 
 **SCITT (Supply Chain Integrity, Transparency and Trust)** provides the transparency statement model that Regulation Records build on. CAP-RRS applies SCITT to the legal domain: the statute is the supply chain claim, the issuing authority is the SCITT issuer, and the CMR is the transparency log. SCITT provides the cryptographic inclusion proof; CAP-RRS provides the domain-specific schema.
