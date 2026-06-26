@@ -2,7 +2,7 @@ import { defineConfig } from 'vitepress'
 
 export default defineConfig({
   title: 'Sovereign Object OS Project',
-description: '12 open protocols that make agentic AI reliable enough to deploy at enterprise scale. Better control means better software.',
+  description: '12 open protocols that make agentic AI reliable enough to deploy at enterprise scale. Better control means better software.',
   base: '/',
   cleanUrls: true,
   ignoreDeadLinks: true,
@@ -16,6 +16,7 @@ description: '12 open protocols that make agentic AI reliable enough to deploy a
     nav: [
       { text: 'Drafts', link: '/drafts' },
       { text: 'Stack', link: '/stack' },
+      { text: 'Agent Identity', link: '/identity' },
       { text: 'Gap List', link: '/gaps' },
       { text: 'Vienna', link: '/vienna' },
       { text: 'Government', link: '/government' },
