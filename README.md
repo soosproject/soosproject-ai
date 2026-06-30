@@ -15,7 +15,7 @@ npm run docs:dev
 
 ```
 /                   Home
-/drafts             All 12 drafts index
+/drafts             All 19 drafts index
 /drafts/hem         HEM — Human Escalation Mechanism
 /drafts/cap         CAP — Constitutional Authority Protocol
 /drafts/cap-rrs     CAP-RRS — Regulation Record Schema
@@ -28,6 +28,15 @@ npm run docs:dev
 /drafts/sov         SOV — Sovereign Object
 /drafts/mjwt        MJWT — Mandate JWT
 /drafts/faip        FAIP — Federated Agent Intelligence Protocol
+/drafts/kee         KEE-1 — Kernel Execution Environment
+/drafts/acd         ACD — Agent Compliance Disclosure
+/drafts/peer        PEER — Cross-Principal Agent Communication
+/drafts/rgp         RGP — Resource Governance Protocol
+/drafts/grp         GRP — Governed Remediation Protocol
+/drafts/aop         AOP — Agent Orchestration Protocol
+/drafts/dam         DAM — Data Artifact Management
+/drafts/cap-rrs-jp  CAP-RRS-JP — Japan e-LAWS LRI Profile (Class B)
+/drafts/kee2        KEE-2/DIST — Distributed Governance Runtime (Class B)
 /gaps               Gap List
 /stack              SOOS Stack overview
 /vienna             Vienna IETF 126 engagement

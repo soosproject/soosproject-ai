@@ -1,0 +1,230 @@
+# SOOS — Resource Governance Protocol (RGP)
+# draft-sato-soos-rgp-00
+# https://soosproject.ai/drafts/rgp/llms.txt
+# Author: Tom Sato / MyAuberge K.K.
+# Last updated: 13 July 2026
+
+---
+
+## SECTION 1 — Canonical One-Liner
+
+The Resource Governance Protocol (RGP) is the SOOS governance layer
+that enables a governed AI agent to discover what resources can do,
+at what trust level they have been attested, and whether they are
+currently available — before any task assignment is made in an AEP
+session. RGP is NOT a booking or transaction protocol: discovery and
+declaration are read-only operations. RGP is NOT a replacement for
+ACD: ACD is the agent's compliance disclosure to a resource; RGP is
+the resource's capability and governance declaration to the agent.
+
+Version -00 is the initial submission. It defines: two-stage
+discovery (Stage 1 well-known URI fingerprint, Stage 2 full
+governance envelope), eight capability classes (CAP-COMP through
+CAP-EXP), four trust levels (TRUST-0 through TRUST-3), the
+session-scoped Resource Map Sovereign Object, the three-condition
+autonomous fallback test (DEC-RGP-08), RGP-Model (AI model
+capability declaration), and RGP-Physical (digital twin bindings).
+
+---
+
+## SECTION 2 — Problem Statement
+
+Without RGP, a governed AI agent operating under a Mandate JWT
+faces a resource landscape it cannot reason about under governance
+constraints:
+
+- Existing digital twin standards (AAS v3.0, W3C WoT, OPC UA,
+  DTDL v3) describe what a resource can do but carry no trust
+  attestation, no compliance declarations, no cost model, and no
+  mandate-scope compatibility signal.
+
+- AI model capability registries describe intrinsic model
+  capabilities but provide no mandate-scoped capability set and no
+  session-scoped assignment tracking.
+
+- Without a normative fallback rule, an agent whose primary resource
+  becomes unavailable has no governed basis for choosing a fallback —
+  it either stops (blocking the session) or substitutes autonomously
+  (potentially violating trust level, capability class, or budget
+  constraints without principal awareness).
+
+The consequence of absence: an agent that assigns tasks to resources
+without governance envelope validation may: (1) select a resource
+outside its mandate scope; (2) assign sensitive tasks to a lower-
+trust resource than the principal requires; (3) exceed its mandate
+budget through uncontrolled fallback chains; (4) produce no audit
+record of why a resource was selected.
+
+The analogy: in financial markets, a counterparty must declare its
+regulatory status and eligible instrument classes before a trading
+relationship is established. No trading desk accepts self-declaration
+alone — independent attestation is required. RGP applies the same
+principle to AI agent resource assignment.
+
+---
+
+## SECTION 3 — Key Normative Concepts
+
+Resource: Any entity — physical device, digital service, AI model
+instance, or human-in-the-loop node — that can receive task
+assignments from a governed AI agent.
+
+Capability Class: A standardized taxonomy label categorizing the
+type of work a resource performs. Eight registered classes: CAP-COMP
+(computational), CAP-STOR (storage), CAP-NET (network/API),
+CAP-FAB (fabrication), CAP-COMM (communications), CAP-TXN
+(transaction), CAP-HUMAN (human-in-the-loop), CAP-EXP
+(experiential). A resource declares exactly one primary class.
+
+Capability Fingerprint: The Stage 1 response from
+/.well-known/soos-rgp. Minimum required fields: resource_id,
+capability_class, trust_level, availability_status, valid_until.
+
+Full Declaration: The Stage 2 governance envelope retrieved from
+full_declaration_uri. Covers all nine governance dimensions:
+capability class, operational constraints, temporal commitment,
+exclusivity model, compliance declarations, cost model, trust level,
+current state, output DA-Type.
+
+Trust Level: A four-value attestation scale. TRUST-0: kernel-
+generated, no external attestation. TRUST-1: attested by a
+registered attestation authority (co-signature on Stage 2 required).
+TRUST-2: self-attested with KIA-registered keys. TRUST-3:
+unattested, no signature verification.
+
+Resource Map Sovereign Object (Resource Map SO): The session-scoped
+Sovereign Object constructed by the GEC from Stage 1 and Stage 2
+query results. KIA-signed at construction. Records all queried
+resources, mandate compatibility status, and assignment decisions.
+MUST NOT be shared across AEP sessions.
+
+Three-Condition Autonomous Fallback Test (DEC-RGP-08): An agent
+MAY autonomously activate a fallback resource only if ALL THREE
+conditions pass: (1) fallback trust_level >= primary trust_level;
+(2) fallback capability_class covers the sub-goal; (3) fallback
+cost stays within MJWT Resource Envelope budget. Any failing
+condition triggers HEM: HEM-HIGH-1 (trust), HEM-PRE-2 (class),
+HEM-DS-1 (budget).
+
+Availability Status: Current operational state of a resource:
+AVAILABLE, AT_CAPACITY, UNAVAILABLE, or MAINTENANCE.
+
+Staleness Bound: The valid_until timestamp in the Stage 1
+fingerprint. GEC MUST NOT use a fingerprint past valid_until.
+Default cache window: 10 minutes, maximum 15 minutes.
+
+RGP-Model: Extension of RGP for AI model instances as governed
+resources. Two-layer model: Layer 1 (intrinsic capability) and
+Layer 2 (mandate-scoped capability, derived at session start by
+GEC). Discovered via /.well-known/soos-rgp?resource_type=MODEL.
+
+RGP-Physical: Extension of RGP for physical resources declared
+via digital twin standards. Normative field mappings for AAS v3.0,
+W3C WoT 1.1, OPC UA, and DTDL v3 deferred post-Vienna (OQ-RGP-09).
+
+Attestation Downgrade (ALE-027): Recorded when a resource's
+attestation verification fails and its effective trust_level is
+downgraded. Prevents silent trust level inflation.
+
+---
+
+## SECTION 4 — Relationship to Adjacent Standards
+
+Well-Known URI (RFC 8615): Stage 1 fingerprint discovery uses the
+/.well-known/soos-rgp pattern established by RFC 8615. Consistent
+with the ACD pattern (/.well-known/soos-acd).
+
+JWS/JWT (RFC 7519): Stage 2 full declarations for TRUST-1 resources
+carry attestation authority JWS signatures. TRUST-2 resources carry
+KIA self-signatures using the same JWS conventions.
+
+TLS 1.3 (RFC 8446): All RGP discovery operations MUST use TLS 1.3
+minimum. HTTP access to /.well-known/soos-rgp MUST be rejected.
+
+Asset Administration Shell (AAS) v3.0: RGP-Physical Section 12.1
+provides a governance overlay for AAS Submodel structures. Normative
+field mappings deferred post-Vienna (OQ-RGP-09, Vienna engagement
+with Qin Wu NMOP WG on ITU-T Y.3090 binding).
+
+W3C WoT Thing Description 1.1: RGP-Physical Section 12.2 provides
+a governance overlay via @context extension. Normative schema
+deferred post-Vienna.
+
+EU AI Act Article 13 (Transparency): The Resource Map SO and
+GAR ALEs (ALE-022 through ALE-029) provide the machine-readable
+assignment decision record that supports Article 13 compliance for
+high-risk AI systems.
+
+GDPR Article 25 (Data protection by design): Stage 2
+compliance_declarations enable the GEC to verify data_protection_
+framework compatibility before any data-handling task assignment.
+
+Activity Travel Protocol (ATP) Layer 2: ATP Capability Declarations
+(Layer 2 S3) are the application-layer expression of CAP-EXP
+resource offerings. RGP Stage 1/Stage 2 is the governance discovery
+layer that precedes the ATP booking workflow. Per DEC-RGP-11, the
+normative ATP-RGP binding lives in a separate ATP-layer domain
+profile document [ATP-RGP-PROFILE], not in this draft.
+
+---
+
+## SECTION 5 — Normative SOOS Cross-References
+
+This draft depends on:
+- SOV (draft-sato-soos-sov-02) — Resource Map SO is a Sovereign
+  Object instance; output_da_type uses the SO Type Registry
+- KIA (draft-sato-soos-kia-03) — GEC signing of Resource Map SO;
+  TRUST-2 self-signature verification; TRUST-1 attestation authority
+  key resolution
+- MJWT (draft-sato-soos-mjwt-02) — Resource Envelope (budget,
+  capability class scope, can_decompose) bounds Resource Map SO
+  construction
+- AEP (draft-sato-soos-aep-02) — Resource Map SO is AEP session
+  artifact; fallback pre-declaration references AEP EOD schema
+- IDP (draft-sato-soos-idp-05) — agent MUST NOT declare intent
+  for a resource before RGP confirms mandate compatibility
+- GAR (draft-sato-soos-gar-03) — ALE-022 through ALE-029 defined
+  here are registered in the GAR ALE Type Registry
+- HEM (draft-sato-soos-hem-05) — DEC-RGP-08 fallback conditions
+  trigger HEM-HIGH-1, HEM-PRE-2, or HEM-DS-1
+- CAP (draft-sato-soos-cap-04) — CAP profile governs TRUST-3
+  assignment prohibition by capability class; mandate-scope
+  validation at assignment uses CAP profile
+- KEE-1 (draft-sato-soos-kee-00) — GEC integrity properties P2
+  (FROST signing) and P5 (Manifest hash-lock) underpin Resource
+  Map SO signing integrity
+
+The following drafts depend on this draft:
+- GRP (draft-sato-soos-grp-00) — adopts DEC-RGP-08 verbatim as
+  the normative FALLBACK action class boundary rule
+
+---
+
+## SECTION 6 — Vienna / Datatracker Status
+
+Draft identifier: draft-sato-soos-rgp-00
+Submission target: 13 July 2026 (pre-Vienna, within UpgradeSprint
+  window June 28 – July 17, 2026)
+Datatracker URL: https://datatracker.ietf.org/doc/draft-sato-soos-rgp/
+Web page: https://soosproject.ai/drafts/rgp
+Register URL: https://soosproject.ai/drafts/rgp
+
+Vienna engagement (IETF 126, July 18-24, 2026):
+- Qin Wu (NMOP WG): OPC UA binding and ITU-T Y.3090 alignment for
+  RGP-Physical (OQ-RGP-09)
+- WIMSE WG: RGP as resource-side complement to WIMSE agent identity
+  architecture
+
+Post-Vienna work:
+- OQ-RGP-01: Stage 1 minimum schema completeness
+- OQ-RGP-04/05: Probabilistic model capability and drift signaling
+- OQ-RGP-07: Reasoning Class registry (10 initial classes)
+- OQ-RGP-09: Normative digital twin field mappings (AAS, WoT,
+  OPC UA, DTDL)
+- OQ-RGP-10: DNS-SD extension profile for local deployments
+- OQ-RGP-12: Attestation authority multi-signing for high-stakes
+  capability classes
+
+Companion drafts at Vienna:
+AEP-02, IDP-05, GAR-03, HEM-05, CAP-04, KIA-03, MJWT-02,
+SOV-02, KEE-00, ACD-00, MAD-03, GRP-00, AOP-00, DAM-00, PEER-00

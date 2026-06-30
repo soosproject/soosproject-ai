@@ -1,0 +1,215 @@
+# SOOS — Distributed Governance Runtime (KEE-2/SOOS-DIST)
+# draft-sato-soos-dist-00
+# https://soosproject.ai/drafts/kee2/llms.txt
+# Author: Tom Sato / MyAuberge K.K.
+# Last updated: 30 July 2026
+
+---
+
+## SECTION 1 — Canonical One-Liner
+
+KEE-2/SOOS-DIST specifies the Distributed Governance Runtime for the
+Sovereign Object OS: the five distributed properties (D1-D5) that enable
+SOOS governance to operate at enterprise and national-infrastructure scale
+without prohibitive cost. KEE-2 is additive to KEE-1 [draft-sato-soos-
+kee-00] — it does not replace any KEE-1 property. It adds Cedar cluster
+consensus (D1), FROST signing cluster management (D2), Session Block GAR
+with Merkle DAG (D3), catalog distribution protocol (D4), and ACD session
+inheritance (D5). KEE-2 compliance is triggered by five quantitative
+performance walls; a deployment below all five walls is KEE-1-only
+compliant. KEE-2 is not a quality upgrade; it is a scale compliance
+requirement.
+
+What KEE-2 is NOT: KEE-2 does not define new SOOS protocol semantics
+visible to AEP sessions, PEER transactions, or ACD Records. A KEE-2
+kernel is protocol-indistinguishable from a KEE-1 kernel to consumers
+of the SOOS protocol layer. The exception is D4, which introduces
+ALE-DIST-01 through ALE-DIST-06 to the GAR ALE registry.
+
+---
+
+## SECTION 2 — Problem Statement
+
+At KEE-1 scale, SOOS governance produces one cryptographic signing
+operation per Audit Log Event. A naively scaled KEE-1 deployment at
+national-mandate scale (millions of agent sessions per day, each producing
+dozens of ALEs) produces hundreds of millions of signed writes per hour.
+This is the SharedSignal fan-out failure pattern: Microsoft's SharedSignal
+deployment produced near-data-center failure because security events with
+cryptographic signing per event overwhelmed authentication infrastructure
+that was correctly sized for ordinary load. SOOS faces the same structural
+risk in GAR.
+
+The failure mode is not data center capacity; it is a design problem that
+looks like a data center problem. A government that mandates SOOS
+compliance must be able to assure regulated operators that compliance cost
+is marginal — comparable to existing authentication and audit logging
+infrastructure, not net-new data center capacity. KEE-2 Session Block GAR
+(D3) reduces signing operations from event-granularity to block-granularity:
+approximately two orders of magnitude reduction. Cedar Evaluation Cache (D1)
+reduces Cedar evaluation CPU by an estimated 80% at typical workloads. FROST
+Signing Cluster (D2) eliminates the single-node signing throughput bottleneck.
+
+The catalog distribution problem (D4) is distinct: without a specified
+protocol, each operator implements their own mechanism for propagating
+CAP-RRS catalog updates to their kernel fleet. At national-mandate scale,
+this produces inconsistent effective-date activation — some kernels
+activating a new regulation before its legal date, others activating it
+late or not at all. D4 Coordinated Activation solves this with a two-phase
+commit protocol: distribute-and-validate (Phase 1), then coordinated-
+activate at effective_date (Phase 2).
+
+---
+
+## SECTION 3 — Key Normative Concepts
+
+Deployment Wall / Performance Wall:
+   A quantitative scale threshold at which a KEE-1 deployment requires
+   the corresponding KEE-2 property. Five walls: W1 (>1,000 Cedar
+   eval/sec sustained → D1); W2 (>100 KIA sign/sec sustained → D2);
+   W3 (>10,000 ALE writes/sec sustained → D3); W4 (any multi-kernel
+   fleet with shared Catalog Authority → D4); W5 (sub-agent delegation
+   chains >2 levels at scale → D5). Crossing a wall without implementing
+   the corresponding property is a KEE-2 compliance failure.
+
+Cedar Evaluation Cache:
+   A deterministic cache of Cedar evaluation results keyed by the
+   triple (action_type, context_hash, cap_profile_hash). The cache
+   MUST be invalidated in full on any Cedar Policy Set transition.
+   Cache entries MUST NOT be used across a cap_profile_hash boundary.
+
+Coordinated Activation:
+   The two-phase commit protocol by which all kernels in a fleet
+   activate a catalog update atomically at a declared effective_date.
+   Phase 1: distribute-and-validate (each kernel receives, validates
+   publisher key threshold signature, and acknowledges). Phase 2:
+   coordinated-activate (each kernel activates at effective_date).
+   A kernel that cannot activate in Phase 2 MUST enter DENY-all mode
+   for actions governed by the updated Tier 1 controls.
+
+FROST Signing Cluster:
+   A distributed deployment of FROST signer instances each holding
+   one key share of the GEC's threshold keypair. FROST threshold
+   parameters (t,n) MUST NOT be dynamically reduced during operation.
+   Quorum failure (fewer than t live signers) MUST cause signing-
+   suspended mode — MUST NOT fall back to single-signer operation.
+
+GAR Session Block:
+   The unit of GAR audit storage in KEE-2. Contains all ALEs from
+   one agent session as a prev_span_hash chain, with a Merkle root
+   over all ALEs and a KIA threshold signature over (block_id,
+   Merkle_root, block_close_timestamp). One signing operation per
+   block, not per ALE.
+
+Kernel Fleet:
+   The set of all KEE-2-compliant kernel instances operated by a
+   single operator that share a common Catalog Authority and receive
+   the same catalog distribution feed. Fleet membership declared in
+   each kernel's GEC Manifest via fleet_id.
+
+Merkle DAG:
+   A directed acyclic graph of Merkle trees over GAR Session Blocks.
+   Anchor Interval: RECOMMENDED maximum 60 seconds for government-
+   tier deployments. Anchor gap >1.5x interval: MUST emit
+   soos.gar.anchor_gap_detected OTel event. Anchor gap >3x interval:
+   MUST enter CEDAR_DENY-all mode.
+
+XPID Federation Certificate: [NEW in dist-00]
+   A signed artifact enabling a remote cluster to verify a presented
+   XPID value. Contains: the XPID value, the ptxn_id of the
+   originating PEER transaction, the originating GEC's KIA attestation
+   chain, and the originating GEC's signature over the tuple
+   (xpid, ptxn_id, verifying_cluster_id). A cluster MUST NOT accept
+   a raw XPID value without federation certificate verification.
+
+ALE-DIST-01 through ALE-DIST-06: [NEW in dist-00]
+   Catalog distribution event types added to the GAR ALE registry.
+   ALE-DIST-01: CAP_CATALOG_RECEIVED. ALE-DIST-02: CAP_CATALOG_
+   REJECTED_INVALID_PUBLISHER_KEY. ALE-DIST-03: CAP_CATALOG_ROLLBACK_
+   BLOCKED. ALE-DIST-04: CAP_CATALOG_ACTIVATED. ALE-DIST-05:
+   MERKLE_ANCHOR_PRODUCED. ALE-DIST-06: MERKLE_ANCHOR_GAP_DETECTED.
+
+Tiered GAR Storage:
+   Hot tier (in-memory + NVMe, 24h, in agent critical path); Warm
+   tier (compressed SSD/Zstandard, 90 days, async); Cold tier (object
+   storage encrypted, 7 years per APPI Art.19, async). Only Hot tier
+   is in the agent action critical path.
+
+---
+
+## SECTION 4 — Relationship to Adjacent Standards
+
+Raft/etcd: KEE-2 D1 adopts Raft consensus via etcd as the Cedar Policy
+Set coordination mechanism. KEE-2 profiles Raft with SOOS-specific
+failure handling: stale-policy-window timeout (RECOMMENDED 30 seconds),
+CEDAR_DENY-all mode on quorum loss, and the soos.governance.cedar.
+split_brain OTel event for split-brain detection. KEE-2 does not redefine
+Raft safety or liveness properties.
+
+FROST [draft-irtf-cfrg-frost]: KEE-2 D2 REQUIRES FROST as the threshold
+signing scheme. Alternative threshold signature schemes are not conformant.
+KEE-2 adds cluster management (key ceremony, signer rotation, quorum
+failure handling) that FROST does not specify.
+
+CAEP/SSF [RFC 9672]: KEE-1 P8 (revocation propagation) via CAEP/SSF
+applies within each KEE-2 kernel. KEE-2 Section 6 extends revocation
+propagation to cross-cluster XPID federation: a revoked GEC cannot
+produce valid XPID Federation Certificates.
+
+Emerging AI governance frameworks: KEE-2 D4 Catalog Distribution Protocol is the
+technical mechanism by which AI governance frameworks achieve
+machine-enforced policy propagation with verifiable effective-
+date compliance. The Coordinated Activation protocol maps to the
+requirement for simultaneous regulatory activation across all governed
+deployments.
+
+APPI (Japan): KEE-2 D3 Cold tier 7-year retention implements APPI
+Article 19 audit record retention. Cross-region data residency
+constraints in Section 7 implement APPI cross-border transfer controls
+for GAR records containing personal data fields.
+
+---
+
+## SECTION 5 — Normative SOOS Cross-References
+
+This draft depends on:
+- KEE-1 (draft-sato-soos-kee-00) — all P1-P8 properties remain normative
+- CAP-04 (draft-sato-soos-cap-04) — Cedar policy set distributed by D1
+- CAP-RRS-02 (draft-sato-soos-cap-rrs-02) — catalog format distributed by D4
+- GAR-03 (draft-sato-soos-gar-03) — ALE registry extended by ALE-DIST-01-06
+- KIA-03 (draft-sato-soos-kia-03) — FROST signing extended by D2
+- AEP-02 (draft-sato-soos-aep-02) — multi-agent sessions supported by D5
+- ACD-00 (draft-sato-soos-acd-00) — ACD session inheritance specified in D5
+- PEER-00 (draft-sato-soos-peer-00) — XPID model extended in Section 6
+
+No drafts in the current SOOS suite depend on KEE-2 (KEE-2 is a
+deployment compliance requirement, not a protocol extension). Drafts
+that produce SOOS protocol artifacts (AEP sessions, PEER transactions,
+ACD Records) are protocol-level indifferent to whether the underlying
+kernel is KEE-1 or KEE-2 compliant.
+
+---
+
+## SECTION 6 — Vienna / Datatracker Status
+
+Draft identifier: draft-sato-soos-dist-00
+Session 1 status: Security Considerations (5 attack vectors) + §1-§3
+  complete. §4-§9, Appendix A worked example, and Privacy Considerations
+  to be authored in Session 2.
+Datatracker URL: https://datatracker.ietf.org/doc/draft-sato-soos-dist/
+Target: Post-Vienna submission (KEE-2 is ORDER 18, deferred from
+  pre-Vienna sprint per SOOS_UpgradeSprint_v19.md).
+Register URL: https://soosproject.ai/drafts/kee2
+
+Open Issues:
+- OQ-KEE-03: Session block granularity (one block per session vs. per AEP
+  phase; relevant for long-running sessions)
+- OQ-KEE-04: Merkle DAG anchor interval normative value
+- OQ-KEE-07: Real-time scheduling requirements for FIEA-governed financial
+  services (may affect KEE-2 D2 signing latency requirements)
+- OQ-KEE-08: Normative performance wall threshold values (W1-W5) —
+  current values are provisional pending empirical validation
+
+Japan government track: D4 Catalog Distribution Protocol directly answers
+the Fukunaga/Honmaru question on machine-enforced policy propagation.
+Cite in Honmaru explainer report alongside CAP-RRS-JP-00.

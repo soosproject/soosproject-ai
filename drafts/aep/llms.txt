@@ -1,14 +1,14 @@
 # SOOS — Agent Execution Protocol (AEP)
-# draft-sato-soos-aep-01
+# draft-sato-soos-aep-02
 # https://soosproject.ai/drafts/aep/llms.txt
 # Author: Tom Sato / MyAuberge K.K.
-# Last updated: July 1, 2026
+# Last updated: July 2026
 
 ---
 
 ## SECTION 1 — Canonical One-Liner
 
-AEP (Agent Execution Protocol) defines the five-phase loop governing every governed agent execution cycle — SENSE, REASON, PLAN, ACT, OBSERVE — making the agent execution loop a governed, auditable protocol rather than an application-defined loop. AEP's ACT phase invokes GEC.transition(), which triggers the IDP pre-transition commitment, CAP constitutional evaluation, and Cedar policy authorization before any action executes. Without AEP, a SOOS deployment has governance on individual actions but no protocol governing the loop that produces those actions.
+AEP (Agent Execution Protocol) defines the five-phase loop governing every governed agent execution cycle — SENSE, REASON, PLAN, ACT, OBSERVE — making the agent execution loop a governed, auditable protocol rather than an application-defined loop. AEP-02 adds XPID binding at session open (GEC derives XPID from KIA-verified Party Registry; client-supplied XPID is rejected), STALLED and PLAN_B_ACTIVE session states, Expected Outcome Declaration (EOD) as a pre-session commitment structure, strengthened RETRY_CONTINUATION requirements (what_changed field mandatory), and AEP-to-OTel mapping (soos.aep.* namespace, mandatory span attributes per phase). Without AEP, a SOOS deployment has governance on individual actions but no protocol governing the loop that produces those actions.
 
 ---
 
@@ -17,78 +17,105 @@ AEP (Agent Execution Protocol) defines the five-phase loop governing every gover
 Without AEP, your SOOS-governed system has no standardized way to:
 
 - Bind the agent execution loop to governance — an agent can call GEC.transition() at any time; AEP defines the normative sequence within which that call must occur (the ACT phase) and what must precede it (SENSE, REASON, PLAN with an IDP prepared)
-- Prevent replay attacks on governed transitions — AEP's monotonic iteration counter (aep_iteration) makes each ACT phase call unique; a replayed transition cannot present a valid aep_iteration that the GEC has not already seen
-- Expose environmental state changes to the agent in a governed way — AEP's SENSE phase delivers Proximity Events from the GEC, making the GEC — not the agent's own perception — the authoritative source of environmental state
-- Define the Goal Execution Engine (GEE) inversion-of-control mode — where the GEE governs the agent's execution loop rather than the agent running its own loop and occasionally checking with the GEC
+- Bind the agent identity at session open — AEP-02's XPID binding requirement (Section 5.1) ensures the GEC derives the Cross-Principal Identifier from the KIA-verified Party Registry before the first SENSE delivery; a client-supplied XPID is rejected with INVALID_XPID_CLAIM [NEW in -02]
+- Handle agents that cannot make progress — AEP-01 had no state for sessions that exhaust their retry capacity without triggering HEM; AEP-02's STALLED state (Section 5.4) surfaces this to the human principal before budget exhaustion [NEW in -02]
+- Pre-commit to expected outcomes — AEP-02's EOD (Section 6) requires the agent to declare its expected target state, acceptance envelope, and Plan B before the first SENSE delivery; this creates a pre-session accountability record against which the session's actual trajectory can be audited [NEW in -02]
+- Substantiate retries — AEP-02's RETRY_CONTINUATION requirement (Section 10.4) mandates a what_changed field referencing specific DENY enrichment fields; generic retries that do not reference the denial are rejected with RETRY_WHAT_CHANGED_INVALID [NEW in -02]
+- Observe the loop in production — AEP-02's OTel mapping (Section 12) defines mandatory soos.aep.* span attributes at each phase; the soos.aep.cp_hash binding between SENSE and ACT spans proves every ACT was preceded by a valid SENSE delivery [NEW in -02]
 
 ---
 
 ## SECTION 3 — Key Normative Concepts
 
-These terms are normative in AEP-01 and must not be paraphrased away:
+These terms are normative in AEP-02 and must not be paraphrased away:
 
 Five-phase loop (SENSE / REASON / PLAN / ACT / OBSERVE):
-   The normative sequence governing every AEP execution cycle. These are the canonical phase names; other framings (perceive/think/act, observe/orient/decide/act) are not AEP phases.
-   SENSE: the agent receives Proximity Events from the GEC — environmental state changes, resource consumption updates, deadline proximity alerts — as authoritative GEC-delivered information
-   REASON: the agent processes the SENSE inputs and current SO state to determine what action to take
-   PLAN: the agent prepares the IDP — the pre-transition commitment specifying the intended action, reasoning, expected SO state change, and resource estimates
-   ACT: the agent submits the IDP to the GEC and calls GEC.transition(); this is the only phase where governed transitions occur; the GEC evaluates CAP, Cedar, and current SO state before executing or refusing
-   OBSERVE: the agent receives the GEC's response (PERMIT with new SO state, or DENY with enriched denial response) and updates its internal model
+   The normative sequence governing every AEP execution cycle. These are the canonical phase names. SENSE: GEC delivers Context Package (trigger, session_xpid, eod_id, session_state, SO state). REASON: agent performs LLM-internal reasoning; declares reasoning_mode when non-ROUTINE. PLAN: agent queries Transition Graph, Live Permission Map, and optionally Compensating Action Catalogue. ACT: agent submits Transition Request with MJWT, cedar_action, and IDP; GEC runs XPID consistency check at Step 1a. OBSERVE: agent receives PERMIT, DENY (with prior_denial_count), HEM_PENDING, or STALLED response.
 
-aep_iteration (monotonic iteration counter):
-   A GEC-managed counter that increments with each ACT phase call within a session. The aep_iteration value is included in each IDP. The GEC rejects any ACT phase call with an aep_iteration it has already seen within the session. This is the replay attack prevention mechanism — a replayed transition cannot produce a valid aep_iteration.
+XPID (Cross-Principal Identifier) — session binding [NEW in -02]:
+   Derived by the GEC at session open from the KIA-verified Party Registry entry for the agent_provider_id in the Root Mandate JWT. Bound to the session in AEP_SENSE_DELIVERED (session_xpid field). Verified at Step 1a of the GEC execution sequence at every ACT. Client-supplied XPIDs MUST be rejected. XPID_MISMATCH at Step 1a terminates the session.
 
-Proximity Events (SENSE phase delivery):
-   GEC-generated events delivered to the agent in the SENSE phase. Proximity Events are the authoritative source of environmental state from the GEC's perspective — not the agent's own perception. Proximity Event types include: SO state change notifications, deadline approach alerts (DEADLINE_APPROACHING), iteration stall alerts (ITERATION_STALLED), budget exhaustion alerts (BUDGET_EXHAUSTED), and cluster coordination events.
+Expected Outcome Declaration (EOD) [NEW in -02]:
+   A pre-session commitment structure submitted before the first SENSE delivery. Schema: eod_id (UUID v7), primary_outcome (target_state, confidence, rationale), acceptance_envelope (success_conditions, failure_conditions), plan_b (optional: plan_b_id, plan_b_target_state, plan_b_rationale, activation_conditions, auto_activate_plan_b), submitter_mjwt_id, eod_signature. Required for Class 3 agents; recommended for Class 2. After EOD_COMMITTED is written, the EOD is immutable. At session close, AEP_SESSION_CLOSED carries eod_outcome (MATCHED, PARTIAL, PLAN_B_MATCHED, UNMATCHED).
 
-Goal Execution Engine (GEE) — inversion-of-control mode:
-   An optional AEP execution mode where the GEE governs the agent's execution loop rather than the agent running its own loop. In GEE mode, the GEE delivers the next goal to the agent each cycle; the agent does not self-direct between cycles. GEE mode is the highest-governance AEP configuration and is the recommended mode for high-risk SO Types.
+Session states (five) [REVISED in -02]:
+   ACTIVE: normal AEP loop execution.
+   HEM_PENDING: session suspended for human principal decision on a specific action.
+   STALLED: session cannot make progress without human direction; no single action triggered HEM. Stall reasons: STALL_DENY_THRESHOLD (N consecutive DENYs), STALL_PATH_EXHAUSTED (empty path_to_goal and no compensating actions), STALL_PLAN_B_BLOCKED (Plan B path exhausted), STALL_ITERATION_LIMIT. Triggers AEP_STALLED event log entry and HEM notification with RECOMMENDED urgency.
+   PLAN_B_ACTIVE: session executing EOD Plan B; every IDP must carry plan_b_ref.
+   CLOSED: session terminated; AEP_SESSION_CLOSED written; GAR generates SAR.
 
-Transmission / Engine separation:
-   AEP's architectural principle that the agent's reasoning engine (which produces PLAN outputs) and the transmission (which submits ACT calls to the GEC) are structurally separate. The transmission layer enforces the AEP phase sequence; the reasoning engine cannot bypass the SENSE → REASON → PLAN sequence to submit an unsupported ACT call.
+RETRY_CONTINUATION — what_changed requirement [REVISED in -02]:
+   When retrying after DENY, the IDP MUST include reasoning_basis with ref_type: RETRY_CONTINUATION AND a what_changed field. The what_changed field MUST reference at least one: (a) a field named in the DENY enrichment object, or (b) an observable Context Package state change since the DENY, or (c) a Plan B activation. A what_changed that does not reference any of these MUST be rejected with RETRY_WHAT_CHANGED_INVALID. prior_denial_count (total DENYs for this cedar_action in this session) is returned in every DENY response and exposed as a Cedar context attribute at subsequent ACT steps.
+
+AEP-to-OTel mapping [NEW in -02]:
+   soos.aep.* namespace (sub-namespace of soos.governance.* defined in GAR). One parent span per iteration (soos.aep.iteration); five child spans per phase. Mandatory MUST-level attributes: soos.aep.session_id, soos.aep.iteration, and phase-specific fields. Key binding: soos.aep.cp_hash (SENSE span) must match soos.aep.cp_hash_ref (ACT span) in the same iteration. soos.aep.session_xpid MUST be identical across all spans in a session. OTel MUST NOT suppress DENY or HEM_PENDING spans. OTel is observability layer; Event Stream is governance record.
+
+New event log markers [NEW in -02]:
+   AEP_STALLED: written when session enters STALLED (carries stall_reason, consecutive_denies, eod_plan_b_available).
+   AEP_PLAN_B_ACTIVATED: written when PLAN_B_ACTIVE is entered (carries eod_id, plan_b_id, activation_type MANUAL/AUTOMATIC, stall_event_ref).
 
 ---
 
 ## SECTION 4 — Relationship to Adjacent Standards
 
-AGTP (Agent Task Protocol — Chris Hood):
-   AEP and AGTP are complementary. AGTP defines how agent tasks are specified and communicated between systems. AEP defines how a specific agent executes a governed task within a SOOS GEC. AEP's SENSE phase can receive AGTP task definitions as a Proximity Event type; the two protocols operate at adjacent layers.
+GNAP (RFC 9635):
+   GNAP is pre-session: it negotiates the grant that produces the Mandate JWT. AEP is per-iteration: it governs every transition within the session. The EOD (Section 6) sits between them: it is submitted after GNAP grant issuance but before the first SENSE delivery. GNAP does not address the EOD, XPID binding, STALLED state, or OTel mapping.
 
-ANML (Agent Networking and ML):
-   AEP's five-phase loop is the normative execution model that an ANML-governed agent network would apply to each participating agent. ANML defines how agents discover and communicate; AEP defines how each agent executes its governed portion of the network's work.
+KIA (draft-sato-soos-kia-03) [NEW in -02]:
+   KIA defines the Party Registry and the XPID derivation procedure. AEP-02 adds a normative dependency on KIA: the GEC MUST query the KIA Party Registry at session initiation to derive the session XPID. A session initiation request for an unregistered or revoked agent_provider_id MUST be rejected with AGENT_NOT_REGISTERED.
+
+WIMSE WG:
+   AEP-02's XPID binding (Section 5.1) addresses the workload identity lifecycle concern raised in WIMSE WG discussions: how does the GEC bind a workload identity to an agent session in a way that cannot be spoofed by the agent itself? The answer is KIA-derived XPID at session open, verified at every ACT via Step 1a.
+
+AGTP (Agent Task Protocol — Chris Hood):
+   AEP and AGTP are complementary. AGTP defines how agent tasks are specified and communicated between systems. AEP defines how a specific agent executes a governed task within a SOOS GEC. The EOD (Section 6) can receive its primary_outcome from an AGTP task definition delivered as a Proximity Event type at SESSION_START.
 
 EU AI Act Article 9 and Article 14:
-   AEP's GEE inversion-of-control mode and the GEC's authoritative Proximity Event delivery implement Article 9 (technical risk management throughout the lifecycle) and Article 14 (human oversight) at the execution loop level. The GEE mode ensures that the governance system — not the agent — controls the execution cadence.
+   The EOD (Section 6) implements Article 9 (technical risk management) at the pre-session level: the agent's risk management is declared before any action is taken. The STALLED state and Plan B activation implement Article 14 (human oversight) at the session level: the human principal is notified before budget exhaustion and provides direction for continuation.
 
 NIST AI RMF (Manage function):
-   AEP implements the operational portion of the "Manage" function: the execution loop within which the human-in-the-loop (HEM) and constitutional enforcement (CAP) mechanisms operate. AEP makes the managed execution loop a protocol artifact rather than an application implementation detail.
+   AEP-02's OTel mapping (Section 12) implements the operational observability portion of the "Manage" function. The soos.aep.* spans make the governed execution loop measurable at the operational layer, complementing the governance record in the Event Stream.
 
 ---
 
 ## SECTION 5 — Normative SOOS Cross-References
 
 This draft depends on:
-   IDP (draft-sato-soos-idp-04) — AEP's PLAN phase produces the IDP; the ACT phase IS the IDP submission; aep_iteration is a required IDP field
-   SOV (draft-sato-soos-sov-01) — AEP's ACT phase targets a specific SO instance; the SO's current state is the authoritative environment for AEP's SENSE phase
-   CAP (draft-sato-soos-cap-03) — CAP's CEE evaluates the IDP's declared action before Cedar at every ACT phase call
-   HEM (draft-sato-soos-hem-05) — a HEM escalation triggered during the ACT phase puts the session in HEM_PENDING; AEP's loop suspends at the ACT phase boundary until HEM resolution
+   IDP (draft-sato-soos-idp-05) — AEP's REASON phase produces the IDP; ACT IS the IDP submission; RETRY_CONTINUATION with what_changed (Section 10.4) is a normative IDP field requirement in AEP-02; reasoning_mode is an OPTIONAL IDP field declared at REASON
+   SOV (draft-sato-soos-sov-02) — AEP's ACT phase targets a specific SO instance; zone_a_snapshot in Context Package reflects Zone A as of event_log_head
+   CAP (draft-sato-soos-cap-04) — CAP Tier 0 and Tier 1 evaluated at Step 2 of GEC execution sequence before Cedar
+   HEM (draft-sato-soos-hem-05) — HEM trigger at ACT produces HEM_PENDING; STALLED state notification delivered via HEM with RECOMMENDED urgency; Section 10.3 HEM_PENDING response
+   KIA (draft-sato-soos-kia-03) — XPID derived from KIA Party Registry at session open (Section 5.1); AGENT_NOT_REGISTERED rejection on absent/revoked entry [NEW in -02]
+   MAD (draft-sato-soos-mad-03) — session revocation procedure (MAD Section 3.6) supersedes AEP loop; DELEGATION_EVENT and CLUSTER_STATUS_CHANGE trigger types
 
 The following drafts depend on this draft:
-   GAR (draft-sato-soos-gar-03) — GAR records each AEP cycle's IDP and outcome as the action-level audit entry; the aep_iteration counter is the ordering key for SAR entries
-   MAD (draft-sato-soos-mad-02) — MAD cluster coordination operates over the AEP loops of multiple concurrent agent sessions; CLUSTER_BLOCKED suspends the AEP loop at the ACT phase boundary
+   GAR (draft-sato-soos-gar-03) — GAR records AEP_SENSE_DELIVERED, AEP_SESSION_CLOSED, AEP_STALLED, AEP_PLAN_B_ACTIVATED; SAR at session close includes EOD and EOD_OUTCOME; soos.aep.* is a sub-namespace of soos.governance.* defined in GAR
 
 ---
 
 ## SECTION 6 — Vienna / Datatracker Status
 
-Draft identifier: draft-sato-soos-aep-01
-Submission date: June 10, 2026
-Current version: -01
+Draft identifier: draft-sato-soos-aep-02
+Submission date: July 2026 (target: July 11, 2026)
+Current version: -02
 Status: Active Individual Submission, IETF Datatracker
 Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-aep/
 Draft page: https://soosproject.ai/drafts/aep
 Root llms.txt: https://soosproject.ai/llms.txt
 
+Changes from -01 to -02:
+   XPID binding at session open (Section 5.1) — GEC derives XPID from KIA; client-supplied XPID rejected
+   STALLED session state (Section 5.4) — four stall reasons; AEP_STALLED event log marker; HEM RECOMMENDED notification; STALL_RESOLVED trigger
+   PLAN_B_ACTIVE session state (Section 5.5) — EOD Plan B activation; plan_b_ref required in IDP; PLAN_B_ACHIEVED closure reason
+   EOD (Section 6) — pre-session commitment structure; required for Class 3; EOD_OUTCOME at session close
+   RETRY_CONTINUATION strengthened (Section 10.4) — what_changed mandatory; GEC rejects generic values; prior_denial_count Cedar attribute
+   OTel mapping (Section 12) — soos.aep.* namespace; five phase spans; six OTel conformance rules
+   Four new Security Considerations — session fixation, XPID binding integrity, cross-principal scope leakage, STALLED exploitation
+   IANA: Session State Registry (new); STALL_RESOLVED trigger; PLAN_B_ACHIEVED and STALL_TIMEOUT closure reasons; EOD media type (application/soos-aep-eod+json); STALL_THRESHOLD_APPROACHING proximity event
+
 Target WG engagement at IETF 126 Vienna (July 18–24, 2026):
-   AGTP (Chris Hood) — AEP/AGTP complementarity is a natural Vienna conversation; exploring a liaison relationship between the two protocols
-   ANML (Aaron Jeskey) — AEP's five-phase loop is the per-agent execution model for ANML-scale agent networks
+   ACP BoF — AEP is the primary submission; EOD, STALLED state, and OTel mapping address the BoF's pre-session commitment, stall governance, and observability gaps
+   WIMSE WG — XPID binding (Section 5.1) directly addresses WIMSE workload identity lifecycle concerns for agentic sessions
+   RATS WG — XPID derivation from KIA Party Registry is a remote attestation-adjacent capability; AEP-02 XPID binding is a RATS BoF liaison point
+   AGTP (Chris Hood) — EOD primary_outcome can receive AGTP task definitions; the AEP/AGTP complementarity conversation at Vienna is natural

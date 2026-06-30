@@ -1,9 +1,20 @@
 # Intent Declaration Primitive
 
 Layer 2 — Session Foundation
-**draft-sato-soos-idp-04**
+**draft-sato-soos-idp-05**
 See this URL for full draft protocol [Datatracker](https://datatracker.ietf.org/doc/draft-sato-soos-idp/)
 See [SOOS Stack](/stack) implementation
+
+---
+
+## What's new in IDP-05
+
+- **intake_endorsement operation (§4.6)** — a GEC service that processes a submitted EOD before session initiation and returns a GEC-signed Endorsed EOD. For Class 3 agents, an endorsed_eod_id in the IDP is now required. An IDP submitted in a Class 3 session without a valid Endorsed EOD is rejected. For Class 2 agents, endorsed_eod_id is recommended and its absence is logged.
+- **PD-EOD: Prompt-Derived EOD branch (§4.7)** — an EOD derived by the GEC from a natural-language prompt. Carries `derived: true`. Scope-bounding rule: the PD-EOD MUST NOT declare a target state outside the SO Type's state machine regardless of prompt content. HEM notification required before first external-system touch not covered by the prompt.
+- **mandate_reference field (§4.1)** — SPO URI linking each IDP to the governing SO Type definition. GEC performs structural validation: the requested_action must be within the SPO action space; an expired SPO results in IDP_SPO_EXPIRED.
+- **Confidence level calibration guidance (§7)** — `CONFIDENCE_MISCALIBRATION_WARNING` trigger: when more than 40% of an agent's high-confidence IDPs receive DENY or HEM_PENDING in a 10-IDP window, the GEC emits a warning and notifies the human principal. The `idp.miscalibration_score` Cedar attribute enables Cedar policies to respond.
+- **RETRY_CONTINUATION strengthened (§4.3)** — backward reference to AEP-02 Section 10.4's what_changed requirement. The description field in a RETRY_CONTINUATION IDP must reference specific DENY enrichment fields; generic descriptions generate `RETRY_WHAT_CHANGED_WEAK` in the Event Log.
+- **Four new Security Considerations** — prompt injection at intake, EOD scope manipulation, confidence_level inflation attack, COMMITMENT_GAP exploitation.
 
 ---
 
@@ -11,7 +22,7 @@ See [SOOS Stack](/stack) implementation
 
 Every action an AI agent takes is a decision. Right now, none of those decisions are signed.
 
-IDP defines the primitive that changes this: the **Intent Declaration** — a signed, structured statement of agent intent, bound to a mandate, issued before execution begins. Without a declared and signed intent, the governance layer has nothing to evaluate prohibitions against, and the audit layer has no anchor for its records.
+IDP defines the primitive that changes this: the **Intent Declaration** — a structured, GEC-signed statement of agent intent, bound to a mandate, issued before execution begins. Without a declared and committed intent, the governance layer has nothing to evaluate against, and the audit layer has no anchor for its records.
 
 **The design premise:** governance without declared intent is retrospective. IDP makes governance prospective — evaluated before the first action, not reconstructed after the last one.
 
@@ -21,9 +32,9 @@ IDP defines the primitive that changes this: the **Intent Declaration** — a si
 
 ### IETF Working Groups
 
-IDP is relevant to the OAUTH, JOSE, and GNAP working groups. IDP is a profiled JWT — it builds on RFC 7519 (JSON Web Token) and RFC 9449 (DPoP) to add agentic-specific claims: mandate binding, context fingerprinting, reasoning mode, and cross-context replay protection.
+IDP is relevant to the OAUTH, JOSE, and GNAP working groups. IDP is a profiled JWT — it builds on RFC 7519 (JSON Web Token) to add agentic-specific claims: mandate binding, reasoning mode, session-binding for replay protection, and now EOD endorsement via intake_endorsement.
 
-The cross-context replay threat model (SA-04) is the primary security addition for Vienna review: a signed IDP proves intent was declared, not that the current execution context matches the context in which intent was declared. The session-binding claims (`session_id`, `gec_instance_id`, `action_sequence_number`) are IDP's mitigation for this class of attack.
+**IDP-05 Vienna additions:** The intake_endorsement operation fills the gap between GNAP grant issuance and first agent action — a gap that GNAP does not address. The PD-EOD branch (Section 4.7) is the protocol response to the WIMSE WG concern about agents derived from natural-language instructions rather than structured credentials. The mandate_reference SPO URI provides the structural validation link that connects the IDP to the SO Type governance model, enabling cross-draft validation.
 
 To engage on IDP: [IETF Datatracker](https://datatracker.ietf.org/doc/draft-sato-soos-idp/) · file issues at [GitHub](https://github.com/soosproject/soos-drafts)
 
@@ -31,9 +42,13 @@ To engage on IDP: [IETF Datatracker](https://datatracker.ietf.org/doc/draft-sato
 
 If you are building an agentic AI system today, the absence of a signed intent declaration means your audit trail starts at the action — not at the decision. When something goes wrong, you can reconstruct what the agent did; you cannot prove what it declared it was trying to do before it started.
 
-IDP closes this gap by requiring a signed, kernel-verified intent declaration before any governed execution begins. The declaration binds the agent's stated goal to its mandate, its identity, and its execution context. If the execution deviates from the declared intent, the deviation is detectable in GAR.
+**New in IDP-05 — intake_endorsement:** Before your agent's session begins, it submits its EOD to the GEC's intake_endorsement endpoint. The GEC validates the EOD against the mandate and SO Type, checks that the target states exist in the state machine, and returns a signed Endorsed EOD with an endorsed_eod_id. Your agent carries this ID in every subsequent IDP. If the EOD was wrong — out-of-scope target state, expired mandate — you find out before the session starts, not after a mysterious sequence of DENYs.
 
-Without IDP: your audit trail is a log of actions. With IDP: your audit trail is a log of declared intents, each of which the actions are then evaluated against.
+**New in IDP-05 — PD-EOD:** If your operator issues natural-language instructions rather than structured EODs, the GEC can derive a PD-EOD from the prompt. The scope-bounding rule ensures the derived EOD cannot exceed the SO Type's action space regardless of what the prompt says. derivation_warnings surfaces anything the GEC excluded or constrained.
+
+**New in IDP-05 — RETRY_CONTINUATION:** Your agent's retry IDPs must now reference specific fields from the DENY enrichment response. The what_changed_guidance field in the Enriched DENY Response tells the agent exactly which enrichment fields to reference. Generic retry descriptions generate RETRY_WHAT_CHANGED_WEAK in the Event Log.
+
+Without IDP: your audit trail is a log of actions. With IDP: your audit trail is a log of endorsed pre-session commitments, per-transition declared intents, and verified outcomes.
 
 [TypeScript example →](https://github.com/soosproject/soos-examples/tree/main/idp)
 
@@ -41,42 +56,58 @@ Without IDP: your audit trail is a log of actions. With IDP: your audit trail is
 
 IDP is the protocol-level mechanism for GDPR Article 5(1)(b) purpose limitation and APPI Article 17 purpose specification. The Intent Declaration is the machine-readable record that the agent declared a specific purpose before acting. Each subsequent action is evaluated against the declared purpose — actions outside the declared scope produce a GAR DENY record before they proceed.
 
-For GDPR Data Protection Impact Assessments: IDP provides the "documented purpose limitation" evidence that DPIAs require for high-risk automated processing. The signed Intent Declaration is that documentation — produced at the kernel layer, not in a policy document.
+**New in IDP-05 — Endorsed EOD:** The intake_endorsement Endorsed EOD is the pre-session, GEC-signed purpose declaration. Before any action is taken, the GEC has attested that the agent's declared outcome is within the mandate's permitted scope. This is the DPIA documentation artifact for automated processing: the signed pre-commitment, not a policy document.
+
+For GDPR DPIAs: The endorsed_eod_id in every IDP creates an unbroken chain from the pre-session purpose declaration to every individual action record in GAR. Purpose scope violations (deny code IDP_ACTION_OUTSIDE_SPO) are detected at the structural validation step — before Cedar evaluation and before any action executes.
 
 ### Agentic AI and coding assistants
 
 **What to tell your coding assistant:**
 
-> "I need to implement SOOS IDP (Intent Declaration Primitive, draft-sato-soos-idp-04). This produces a signed JWT-based Intent Declaration before any governed agent execution. The declaration must include: mandate binding (MJWT reference), goal declaration (typed, Cedar-evaluable), context package (reasoning_mode from 8-value taxonomy, time_budget_remaining, resource envelope), scope boundary, and session-binding claims (session_id, gec_instance_id, action_sequence_number). The kernel signs the declaration using KIA-attested credentials. Cross-context replay attacks are mitigated by verifying session_id matches the current active session. Mismatched session_id MUST be rejected with IDP-E007 and recorded in GAR."
+> "I need to implement SOOS IDP-05 (draft-sato-soos-idp-05). Before any session begins (Class 3 required, Class 2 recommended), my agent must call the GEC's intake_endorsement operation with the EOD and principal credential. The GEC returns an Endorsed EOD with an endorsed_eod_id. Every IDP submitted during the session must carry this endorsed_eod_id. For natural-language-driven sessions, the GEC can derive a PD-EOD from the prompt (derived: true) — the scope-bounding rule applies; the PD-EOD cannot target states outside the SO Type's state machine. When my agent retries after DENY, the RETRY_CONTINUATION IDP's description must reference specific fields from the DENY enrichment response (the what_changed_guidance in the Enriched DENY Response tells me which ones). If I'm in PLAN_B_ACTIVE state, the IDP must carry plan_b_ref. If my agent's high-confidence declarations are frequently denied, CONFIDENCE_MISCALIBRATION_WARNING fires and the human principal is notified."
 
 **Key schema fields:**
 
 | Field | Type | Description |
 |---|---|---|
-| `intent_id` | string | Unique identifier for this Intent Declaration |
-| `mandate_id` | string | MJWT mandate reference — binds intent to authority |
-| `goal_type` | string | Typed goal class (Cedar-evaluable) |
-| `goal_scope` | object | Declared scope boundaries for this execution |
-| `reasoning_mode` | enum | One of 8 declared modes (DIRECT, CHAIN, TREE, REFLEXIVE, DELEGATED, COLLABORATIVE, EXTENDED, CONSTRAINED) |
-| `time_budget_remaining` | integer | Budget in seconds at declaration time |
-| `session_id` | string | GEC session identifier — replay protection |
-| `gec_instance_id` | string | KIA-attested GEC instance — replay protection |
-| `action_sequence_number` | integer | Monotonically increasing per session |
-| `kernel_signature` | string | KIA-attested signature over the full declaration |
+| `idp_id` | string | UUID v4. Unique per governed object lifetime. |
+| `session_id` | string | GEC session identifier — replay protection. |
+| `mandate_id` | string | MJWT jti — binds intent to authorization credential. |
+| `mandate_reference` | string | SPO URI. Structural validation against SO Type. [NEW] |
+| `endorsed_eod_id` | string | UUID of GEC-signed Endorsed EOD. Required for Class 3. [NEW] |
+| `eod_id` | string | Original (unendorsed) EOD UUID. Audit chain. [NEW] |
+| `plan_b_ref` | string | plan_b_id from EOD. Required in PLAN_B_ACTIVE state. [NEW] |
+| `requested_action` | string | Cedar action string. Must be in SPO action space. |
+| `reasoning_basis.type` | enum | RULE_BASED / INFERENCE / INSTRUCTION / UNCERTAINTY_REDUCTION / MISSION_STAGE / RETRY_CONTINUATION |
+| `reasoning_basis.description` | string | For RETRY_CONTINUATION: must reference specific DENY enrichment fields. [REVISED] |
+| `confidence_level` | number | Float 0.0–1.0. Triggers CONFIDENCE_MISCALIBRATION_WARNING if systematically high + denied. [REVISED] |
+| `reasoning_mode` | enum | ROUTINE / PREDICTIVE / DIAGNOSTIC / CHANNEL_DEGRADED / META / COMPENSATING / DELEGATION_AWARE / HEM_INFORMED |
+| `gec_instance_id` | string | KIA-attested GEC instance — replay protection. Required L2/L3. |
 
-**Minimal Cedar policy example:**
+**Minimal Cedar policy example — endorsed EOD gate:**
 
 ```cedar
-// Permit execution only when intent declaration is present and session matches
+// Require endorsed EOD for Class 3 autonomous agents on high-risk SO types
 permit (
   principal,
-  action == Action::"ExecuteGovernedAction",
+  action == Action::"ExecuteHighRiskTransition",
   resource
 )
 when {
-  context.intent_declared == true &&
+  context.idp.has_endorsed_eod == true &&
+  context.idp.eod_scope_status == "IN_SCOPE" &&
   context.session_id == context.active_session_id &&
-  context.intent_not_expired == true
+  context.agent_miscalibration_active == false
+};
+
+// Require HEM after confidence miscalibration is detected
+forbid (
+  principal,
+  action == Action::"ElevatedAuthorityTransition",
+  resource
+)
+when {
+  context.agent_miscalibration_active == true
 };
 ```
 
@@ -84,9 +115,11 @@ when {
 
 IDP is the protocol that makes purpose limitation enforceable at the kernel layer. A privacy regulator that requires AI systems to act only within declared purposes can point to IDP as the technical mechanism: before any action, the agent declares its purpose in a signed, kernel-verified record. Actions outside that declared purpose are blocked by CAP policy and recorded in GAR.
 
-For Japan (APPI Article 17 — purpose specification): IDP provides the machine-readable purpose declaration that APPI requires, in a format that is auditable and verifiable by the Personal Information Protection Commission.
+**New in IDP-05 — Endorsed EOD as Article 9 record:** The intake_endorsement operation produces a GEC-signed document attesting that the agent's pre-session goal declaration is within mandate scope, that the target states exist in the SO Type's state machine, and that the Plan B is structurally valid. This is the EU AI Act Article 9 technical risk management artifact at the pre-session level — a machine-verifiable risk assessment, not a policy document.
 
-For GDPR (Article 5(1)(b) — purpose limitation): IDP's signed declaration and the GAR audit trail of purpose-compliant actions is the technical evidence layer for Data Protection Authority inquiries.
+**New in IDP-05 — Confidence calibration monitoring:** The CONFIDENCE_MISCALIBRATION_WARNING trigger implements the Article 9 "monitoring throughout the lifecycle" requirement for systematic confidence miscalibration. If an agent's confidence declarations are systematically inconsistent with its outcome record, the GEC detects this within a 10-IDP window and notifies the human principal.
+
+For Japan (APPI Article 17): IDP-05's endorsed_eod_id creates a machine-readable chain from the human principal's purpose authorization (principal_credential in the intake_endorsement request) to every individual action in the session. The APPI purpose specification is the source_prompt or structured EOD; the Endorsed EOD is the GEC's attestation that the session is within that purpose.
 
 For collaboration on jurisdiction-specific intent declaration requirements: [tomsato@myauberge.jp](mailto:tomsato@myauberge.jp)
 
@@ -94,106 +127,118 @@ For collaboration on jurisdiction-specific intent declaration requirements: [tom
 
 ## Core technology
 
-**Problem:** AI agents act on stated intent that is neither signed nor verifiable. When an agent takes a harmful action, there is no proof of what it declared it was trying to accomplish before it started — only a record of what it did.
+**Problem:** AI agents act on stated intent that is neither signed nor verifiable. When an agent takes a harmful action, there is no proof of what it declared it was trying to accomplish before it started. When it retries a denied action, there is no normative requirement to articulate what changed since the denial. When it declares high confidence and is repeatedly denied, there is no detection mechanism for systematic overconfidence.
 
-**Mechanism:** IDP requires a signed, structured Intent Declaration before any governed execution begins. The declaration binds the agent's goal to its mandate (MJWT), its identity (KIA attestation), and its execution context (reasoning mode, time budget, session ID). The kernel signs the declaration; any deviation from declared scope is detectable.
+**Mechanism:** IDP-05 requires:
+1. A GEC-signed Endorsed EOD before the session begins (intake_endorsement).
+2. A per-transition IDP carrying the endorsed_eod_id before each action.
+3. A what_changed-specific description when retrying after DENY.
+4. A CONFIDENCE_MISCALIBRATION_WARNING detection window over the session.
 
-**Output:** A signed, mandate-bound Intent Declaration that is the root record for every governance event in the session. Every CAP evaluation, every HEM escalation, every GAR audit record in the session references the originating Intent Declaration.
+**Output:** A complete audit chain: Endorsed EOD → IDP_SUBMITTED → Cedar evaluation → STATE_TRANSITIONED or CEDAR_DENY_RECORDED → IDP_COMMITMENT_VERIFIED. Every step is GEC-signed. The endorsed_eod_id connects every action record back to the pre-session commitment. At session close, the EOD_OUTCOME (MATCHED, PARTIAL, PLAN_B_MATCHED, UNMATCHED) records whether the session delivered what the agent pre-committed to.
 
-**Who verifies it:** Privacy officers verifying purpose limitation compliance, compliance teams auditing agent behaviour against declared intent, security teams detecting cross-context replay attacks, and regulators requiring documented purpose specification.
+**Who verifies it:** Privacy officers verifying GDPR Article 5(1)(b) purpose limitation, compliance teams demonstrating EU AI Act Article 9 technical risk management, security teams monitoring CONFIDENCE_MISCALIBRATION_WARNING events, and regulators auditing the pre-session commitment chain.
 
 ---
 
 ## Reasoning mode taxonomy
 
-IDP-04 formalises the reasoning mode field — a declaration of the cognitive mode the agent is operating in at time of intent declaration. Eight modes are defined:
+IDP-05 retains the eight reasoning mode values from IDP-04, now cross-referenced with AEP-02's SENSE trigger types.
 
-| Mode | Description | Governance implications |
+| Mode | SENSE trigger that preceded REASON | What the IDP is directing at |
 |---|---|---|
-| `DIRECT` | Single-step execution, no multi-turn reasoning | Simplest CAP evaluation path |
-| `CHAIN` | Sequential chain-of-thought, each step depends on last | Each step re-evaluated by kernel |
-| `TREE` | Branching reasoning, multiple paths in parallel | CAP evaluation must cover all branches |
-| `REFLEXIVE` | Self-evaluation loop before acting | Kernel waits for self-assessment output |
-| `DELEGATED` | Sub-task delegated to another agent (MAD active) | MAD delegation chain verification required |
-| `COLLABORATIVE` | Multi-agent joint reasoning, no single controlling agent | HEM_MULTI_PRINCIPAL_REQUIRED may apply |
-| `EXTENDED` | Long-horizon reasoning across multiple sessions | Cross-session replay protections active |
-| `CONSTRAINED` | Reasoning explicitly limited by operator policy | Verifiable against Cedar policy set |
+| `ROUTINE` | STATE_CHANGE (no anomaly) | Next planned SO state transition |
+| `PREDICTIVE` | PROXIMITY_EVENT (threshold approaching) | Preemptive action; confidence SHOULD be STANDARD or lower |
+| `DIAGNOSTIC` | Anomalous SO state | Cause investigation + compensating action |
+| `CHANNEL_DEGRADED` | Any (input delivery faulted) | Fallback or HEM; confidence MUST be UNCERTAIN (0.0–0.59) |
+| `META` | Pattern across iterations | Process proposal to human principal; hem_urgency MUST be RECOMMENDED or REQUIRED |
+| `COMPENSATING` | DENY in prior OBSERVE | Alternate path to goal; reasoning_basis MUST be RETRY_CONTINUATION |
+| `DELEGATION_AWARE` | DELEGATION_EVENT or CLUSTER_STATUS_CHANGE | Revised plan for changed delegation topology |
+| `HEM_INFORMED` | HEM_RESOLUTION | Constrained action under human decision; decision_id MUST be cited |
 
-The declared mode travels with the intent through the full execution lifecycle. Execution behaviour inconsistent with the declared mode is a governance anomaly recorded in GAR.
+---
+
+## intake_endorsement: the pre-session gate
+
+The intake_endorsement operation is the bridge between GNAP grant issuance and the first AEP SENSE delivery. The agent or operator submits:
+- The EOD (primary outcome, acceptance envelope, Plan B if any).
+- The Root Mandate JWT for the session.
+- A principal credential recognized by the GEC's Party Registry.
+
+The GEC validates:
+- The EOD schema.
+- The Mandate JWT (MJWT verification).
+- That the primary_outcome.target_state exists in the SO Type's state machine.
+- That the plan_b.plan_b_target_state (if present) exists in the SO Type's state machine.
+- The scope_status (IN_SCOPE, PARTIAL_SCOPE, OUT_OF_SCOPE).
+
+The GEC returns a GEC-signed Endorsed EOD with endorsed_eod_id. The GEC records the Endorsed EOD in the Event Stream as ENDORSED_EOD. The agent carries endorsed_eod_id in every IDP for the session.
+
+If the EOD is out of scope, the agent sees scope_status: OUT_OF_SCOPE and can revise before the session begins — not after a series of DENYs reveals the scope mismatch at execution time.
 
 ---
 
 ## Cross-context replay protection
 
-A signed Intent Declaration created in one context must not be reusable in another. IDP-04 defines three normative protections:
+A signed Intent Declaration created in one context must not be reusable in another. IDP-05 retains and extends IDP-04's three protections:
 
-**Mandate binding** — the Intent Declaration is cryptographically bound to the MJWT mandate. A replayed declaration fails mandate validation if the mandate has expired or the action is outside scope.
+**Endorsed EOD binding [NEW]** — the endorsed_eod_id in the IDP is validated against the Event Log ENDORSED_EOD entry. An endorsed_eod_id that was not produced by this GEC instance for this session's Mandate JWT results in IDP_ENDORSED_EOD_INVALID.
 
-**Context fingerprint** — the Context Package includes a fingerprint of the execution environment at declaration time. A changed environment produces a fingerprint mismatch, recorded in GAR.
+**Mandate binding** — the IDP is bound to the MJWT mandate. A replayed declaration fails mandate validation if the mandate has expired or the action is outside scope. The mandate_reference SPO URI [NEW] adds a structural validation layer: the requested_action must be in the SPO's action space.
 
-**Session anchor** — the Intent Declaration is anchored to the current SO session via `session_id`. An intent declared in session A cannot authorise an action in session B. Mismatched `session_id` MUST be rejected with IDP-E007 (SESSION_MISMATCH) and recorded in GAR.
+**Session anchor** — the IDP is anchored to the current AEP session via session_id. An IDP from session A cannot authorise an action in session B. Mismatched session_id produces IDP_SESSION_MISMATCH.
 
 ---
 
 ## Use cases
 
-**GDPR purpose limitation audit — healthcare AI**
+**EU AI Act Article 9 compliance — high-risk financial agent**
 
-A hospital deploys an agent to assist with patient record lookup for treatment planning. IDP requires the agent to declare its purpose — "treatment planning record access" — in a signed declaration before any record access begins. A subsequent attempt to access records for insurance billing purposes fails CAP evaluation (outside declared scope) and is recorded in GAR. The Data Protection Officer has a complete, machine-verifiable audit trail of declared purpose and all scope boundary violations.
+A bank deploys a Class 3 autonomous agent to review loan applications. Before the first SENSE delivery, the agent's operator calls intake_endorsement with an EOD declaring "primary outcome: all applications reviewed and classified" and a Plan B of "flag unreviewed applications for manual review." The GEC validates the Endorsed EOD — target states exist in the Loan Application SO Type state machine, all actions are within mandate scope — and returns endorsed_eod_id. Every subsequent IDP carries this endorsed_eod_id. At session close, the EOD_OUTCOME: MATCHED is the Article 9 technical risk management record. The bank's compliance team has the full chain: pre-session commitment → per-transition declarations → GEC-verified outcomes.
 
-**Multi-session extended research agent**
+**Natural-language-driven research agent — PD-EOD branch**
 
-A research agent is given a mandate to conduct literature review across multiple sessions over several days. EXTENDED reasoning mode is declared in each session's Intent Declaration. Cross-session replay protections are active — an intent declaration from session 1 cannot be reused to authorise actions in session 4 without a new declaration bound to the current session's `session_id`. The GAR record for each session references its originating IDP, providing a coherent multi-session audit trail.
+A research operator gives a natural-language instruction: "Find all regulatory filings from 2026 about AI governance." The GEC's intake_endorsement operation derives a PD-EOD (derived: true) from the prompt: primary_outcome.target_state = "RESEARCH_COMPLETE", scope = regulatory filing SO Type. The scope-bounding rule prevents the PD-EOD from including an implicit "and summarize them in a public post" that was not in the SO Type's permitted actions. derivation_warnings flags the exclusion. The operator acknowledges, and the session begins within the bounded scope.
 
-**Delegated sub-agent scope verification**
+**Systematic retry governance — CONFIDENCE_MISCALIBRATION_WARNING**
 
-A parent agent delegates a sub-task to a child agent using MAD. The child agent produces its own Intent Declaration, bound to the delegation grant rather than the original mandate. The child's declared scope is verified against the MAD narrowing property — the child cannot declare a scope broader than the parent's. If it does, the declaration fails KIA signature verification and GAR records the attempted scope expansion.
+An agent repeatedly declares 0.92 confidence and submits Transition Requests for a Cedar-gated action. The Cedar policy requires prior_denial_count < 3 for this action. After 3 DENYs, the action is gated. The agent's confidence_level remains 0.92 despite repeated denial. After 10 IDPs with 5 DENYs on high-confidence declarations, CONFIDENCE_MISCALIBRATION_WARNING fires. The human principal is notified via HEM with the miscalibration ratio. The Cedar context attribute `agent_miscalibration_active: true` is applied, triggering an additional Cedar policy that requires HEM escalation for elevated-authority transitions from this agent for the remainder of the session.
 
 ---
 
 ## How this builds on existing work
 
-**RFC 7519 (JSON Web Token)** defines the JWT format and claims model. IDP is a profiled JWT — it inherits JWT's signing, verification, and claims semantics, and adds agentic-specific claims: mandate binding, context fingerprinting, reasoning mode, and session-binding for replay protection.
+**AEP-02 (draft-sato-soos-aep-02)** introduced the EOD as an AEP-layer concept. IDP-05 provides the IDP-layer counterpart: the intake_endorsement operation that produces the Endorsed EOD the AEP EOD references, and the endorsed_eod_id field that binds every IDP to the pre-session commitment. AEP-02 and IDP-05 are designed together; an endorsed_eod_id from IDP-05 is the same artifact referenced by AEP-02's EOD lifecycle.
 
-**RFC 9449 (DPoP — Demonstrating Proof of Possession)** provides the proof-of-possession pattern that IDP's kernel signature builds on. The IDP signature proves that the declaring agent holds the KIA-attested key at the moment of declaration — not just that it knows the key.
+**GNAP (RFC 9635)** establishes the grant before the session. intake_endorsement operates in the window between GNAP grant issuance and first SENSE delivery. GNAP does not address EOD endorsement; IDP-05 fills that gap.
 
-**GDPR Article 5(1)(b) and APPI Article 17** establish the legal obligation for purpose specification and limitation in automated processing. IDP is the technical protocol that makes these obligations machine-verifiable at the kernel layer rather than policy-document-dependent.
-
-**GNAP (RFC 9635)** addresses initial grant establishment between agents and authorisation servers. IDP is the intent-side complement: GNAP establishes what the agent is authorised to do; IDP is the agent's signed declaration of what it intends to do within that authorisation.
-
----
-
-## Related work
-
-**draft-singla-agent-identity-protocol** and related agent identity drafts address the identity layer for agentic systems — what credentials the agent holds. IDP is the intent layer that operates after identity is established: the agent's signed declaration of purpose and scope, bound to its verified identity.
-
-**WIMSE (Workload Identity in Multi-Service Environments)** addresses workload-side identity for service-to-service authentication. IDP builds on WIMSE identity by binding the Intent Declaration to the KIA-attested GEC instance identifier — the governance-kernel-side proof that the declaring entity is the governed kernel, not an impersonator.
-
-**OpenID Foundation (arxiv:2604.23280, April 2026)** acknowledges that cross-context replay in attenuated delegation chains is "largely unsolved." IDP's session-binding claims and context fingerprint are the kernel-layer mitigation for this class of attack as it applies to intent declarations in agentic execution.
+**W3C PROV-DM** provides the provenance data model. The ENDORSED_EOD Event Log entry is a PROV-DM Agent declaration. The IDP_SUBMITTED entries are PROV-DM Activity records. The IDP_COMMITMENT_VERIFIED entries close the provenance loop: the declared intent (Entity) was used to generate the action (Activity) and the GEC confirmed the match.
 
 ---
 
 ## Security
 
-**Key security properties:** The Intent Declaration is kernel-signed using KIA-attested credentials. A declaration signed by an entity that is not the current GEC instance fails KIA verification. Session-binding claims prevent cross-context replay. The kernel records the Intent Declaration in GAR as the first event of every governed execution session — the audit trail cannot exist without it.
+**Prompt injection at intake [NEW]:** An adversary who can influence the source_prompt of a PD-EOD may attempt to inject scope-expanding instructions. The scope-bounding rule (Section 4.7.2) is the primary mitigation: the PD-EOD MUST NOT declare a target state outside the SO Type's state machine regardless of prompt content. derivation_warnings surfaces excluded content for human principal review.
 
-**Cross-context replay:** The primary security addition in IDP-04. A valid Intent Declaration from session A cannot authorise actions in session B. `session_id` must match the current active session; mismatches produce IDP-E007 and a GAR record.
+**EOD scope manipulation [NEW]:** The Endorsed EOD is GEC-signed; modification in transit invalidates the signature. IDP validation checks the Event Log ENDORSED_EOD entry, not the agent-supplied Endorsed EOD — a fabricated endorsed_eod_id that does not match the Event Log is rejected with IDP_ENDORSED_EOD_INVALID.
 
-**Mandate expiry:** The Intent Declaration is bound to an MJWT mandate with a defined expiry. Declarations presented after mandate expiry fail validation. The MJWT narrowing property (INV-4) ensures that delegated intents cannot declare broader scope than the parent mandate permits.
+**Confidence inflation attack [NEW]:** Systematic high-confidence declarations followed by DENYs are detected by the CONFIDENCE_MISCALIBRATION_WARNING trigger within a 10-IDP window. Cedar policies SHOULD combine confidence_level with agent_miscalibration_active and PT score; confidence alone MUST NOT be the basis for elevated-privilege permits.
 
-**Open question (OQ-HEM-DLA-03):** Should IDP include a boolean `uncertainty_declared` field, allowing the agent to formally declare that it is operating at or near its confidence threshold? This would provide a structured bridge between LLM-HEM (model-layer signals) and SOOS-HEM (kernel-layer Class 5 trigger evaluation). Resolution is deferred to a future IDP manifest session.
+**COMMITMENT_GAP exploitation [NEW]:** Wildcard requested_action values (e.g., "atp:booking:*") are not valid Cedar action strings and MUST be rejected with IDP_MALFORMED. PARTIAL_MATCH patterns above a frequency threshold generate KERNEL_AUDIT_ANOMALY alerts.
 
-**Session revocation:** When a session is revoked, the associated Intent Declaration is invalidated. Implementations MUST NOT accept Intent Declarations from revoked sessions for new action authorisations.
+**Cross-context replay:** session_id binding (IDP-04) plus endorsed_eod_id binding (IDP-05) create two independent cross-context barriers. A replayed IDP from a different session fails both session_id validation and endorsed_eod_id Event Log verification.
 
 ---
 
 ## SOOS stack context
 
-IDP sits at **Level 2 — Session Foundation**, below the governance layer (HEM, CAP, GAR) but above the foundation layer (KIA, SOV). The intent must be established and signed before the governance layer can evaluate it.
+IDP sits at **Level 2 — Session Foundation**, below the governance layer (HEM, CAP, GAR) but above the foundation layer (KIA, SOV).
 
-IDP depends on KIA (signing credentials), MJWT (mandate binding), and SOV (session boundary and state machine). It is consumed by CAP (Cedar evaluates intent against prohibitions), HEM (scope boundary breach is a Class 2 trigger), GAR (Intent Declaration is the audit root for every session), AEP (governed execution loop begins with intent declaration), and MAD (delegation creates a child intent chain).
+IDP-05 depends on KIA (signing credentials, Party Registry for principal_credential validation in intake_endorsement), MJWT (mandate binding), SOV (session boundary and state machine — SO Type state machine used in SPO structural validation), and AEP-02 (EOD structure, endorsed_eod_id lifecycle, plan_b_ref in PLAN_B_ACTIVE state).
 
-Related drafts: [HEM](/drafts/hem) · [CAP](/drafts/cap) · [GAR](/drafts/gar) · [MJWT](/drafts/mjwt) · [KIA](/drafts/kia)
+It is consumed by CAP (Cedar evaluates intent against prohibitions), HEM (CONFIDENCE_MISCALIBRATION_WARNING and PD-EOD external-system touch notifications route via HEM), GAR (Intent Declaration and Endorsed EOD are the audit roots for every session), and PT (confidence calibration is a Precision Score behavioral dimension).
+
+Related drafts: [AEP](/drafts/aep) · [HEM](/drafts/hem) · [CAP](/drafts/cap) · [GAR](/drafts/gar) · [MJWT](/drafts/mjwt) · [KIA](/drafts/kia)
 
 ---
 
@@ -201,5 +246,5 @@ Related drafts: [HEM](/drafts/hem) · [CAP](/drafts/cap) · [GAR](/drafts/gar) �
 
 - [File an issue on GitHub](https://github.com/soosproject/soos-drafts/tree/main/idp)
 - [IETF Datatracker — full draft text](https://datatracker.ietf.org/doc/draft-sato-soos-idp/)
-- [All Drafts](/drafts) — the complete 12-draft governance stack
+- [All Drafts](/drafts) — the complete SOOS governance stack
 - Contact: [tomsato@myauberge.jp](mailto:tomsato@myauberge.jp)

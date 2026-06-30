@@ -2,7 +2,7 @@
 layout: home
 hero:
   name: "Sovereign Object OS Project"
-  text: "12 open protocols that make agentic AI reliable enough to deploy at enterprise scale."
+  text: "19 open protocols that make agentic AI reliable enough to deploy at enterprise scale."
   tagline: "More control over what your agents do. More confidence in what they produce. More capability to deploy them where it counts."
   actions:
     - theme: brand

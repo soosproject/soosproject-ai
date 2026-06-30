@@ -1,0 +1,204 @@
+# SOOS — Cross-Principal Agent Communication (PEER)
+# draft-sato-soos-peer-00
+# https://soosproject.ai/drafts/peer/llms.txt
+# Author: Tom Sato / MyAuberge K.K.
+# Last updated: 2026-06-30
+
+---
+
+## SECTION 1 — Canonical One-Liner
+
+PEER (Cross-Principal Agent Communication) is the SOOS protocol for
+governing transactions between two AI agents that each operate under
+independent mandate roots, independent Governed Execution Contexts
+(GECs), and independent audit chains. PEER introduces the PEER
+Transaction Record (PTR) as a new first-class SOOS primitive, and
+the ptxn_id (Cross-Principal Transaction ID) as a jointly-derived
+correlation identifier that links two independent GAR audit chains
+at the moment of a cross-principal transaction.
+
+PEER is NOT: a sub-agent orchestration protocol (that is MAD/SACR);
+a cross-principal constitutional layer (each GEC's CAP governs only
+its own side); a business payload specification (domain protocols
+such as ATP govern the payload); or a dispute resolution mechanism
+(OQ-PEER-03, deferred to PEER-01).
+
+draft-sato-soos-peer-00 is a problem statement and architecture draft.
+Normative ALE schemas, full PTR field specifications, and dispute
+resolution procedures are deferred to draft-sato-soos-peer-01
+(post-Vienna, IETF 126).
+
+---
+
+## SECTION 2 — Problem Statement
+
+Without PEER, two independently-governed AI agents that transact
+with each other produce two separate audit records with no shared
+identifier. An auditor cannot confirm that Record A and Record B
+describe the same transaction. A party can deny participation. A
+forged audit entry claiming a transaction occurred (or did not occur)
+is undetectable.
+
+The Provenance Paradox (arXiv:2603.18043) demonstrates this
+empirically: self-reported quality scores in multi-agent routing
+perform worse than random (0.55 vs. 0.68 mean quality score,
+p<0.001). Honor-system self-certification fails adversarially.
+
+PEER replaces self-certification with a cryptographic mutual
+attestation handshake and a jointly-derived ptxn_id that neither
+agent can produce without the other's participation. Both GAR chains
+independently record the ptxn_id. An auditor holding both chains
+can reconstruct the cross-principal transaction by matching ptxn_id
+values and verifying the responding GEC countersignature.
+
+The design premise: the audit boundary does not stop at the edge of
+your own GEC. Cross-principal transactions are only auditable if
+both sides' records are provably linked — and that link must not
+require trusting either party's self-report.
+
+---
+
+## SECTION 3 — Key Normative Concepts
+
+[NEW in -00] Cross-Principal Transaction:
+A transaction between two AI agents each operating under an
+independent mandate root, where neither agent's principal is the
+same entity as, or a delegate of, the other agent's principal, and
+no shared Governed Execution Context (GEC) governs both sides.
+
+[NEW in -00] PEER:
+The Cross-Principal Agent Communication protocol defined in
+draft-sato-soos-peer-00. PEER governs the attestation, gating, and
+audit correlation requirements for a Cross-Principal Transaction.
+PEER does not govern the business payload of the transaction.
+
+[NEW in -00] PEER Transaction Record (PTR):
+A jointly-produced governance artifact capturing the identities,
+timestamp, correlation identifier, and pre-call gate references for
+a Cross-Principal Transaction. The PTR is produced by both GECs
+independently and stored in each party's GAR chain. The PTR is not
+a business record; it is a governance correlation record.
+
+[NEW in -00] ptxn_id (Cross-Principal Transaction ID):
+A deterministically-derived identifier produced by the Initiating
+Agent's GEC and countersigned by the Responding Agent's GEC,
+uniquely identifying a single Cross-Principal Transaction. Derived
+as:
+  ptxn_id = UUID-v5(
+    initiating_kia_id || responding_kia_id || initiated_at ||
+    initiating_nonce  || responding_nonce
+  )
+Neither party can produce a valid ptxn_id without the other's
+nonce contribution.
+
+[NEW in -00] Initiating Agent:
+The agent that opens a Cross-Principal Transaction by presenting its
+KIA identity and requesting the Responding Agent's participation.
+The Initiating Agent's GEC generates the ptxn_id.
+
+[NEW in -00] Responding Agent:
+The agent that receives a Cross-Principal Transaction request,
+validates the Initiating Agent's KIA identity, and countersigns the
+ptxn_id to confirm mutual participation.
+
+[NEW in -00] ALE-PEER (candidate event types — normative schemas
+deferred to PEER-01):
+  ALE-PEER-01: MUTUAL_ATTESTATION_COMPLETE
+  ALE-PEER-02: PTXN_ID_ISSUED
+  ALE-PEER-03: PEER_TRANSACTION_COMPLETE
+  ALE-PEER-04: PEER_ATTESTATION_FAILED
+
+---
+
+## SECTION 4 — Relationship to Adjacent Standards
+
+draft-kuehlewind-audit-architecture-00 (Kühlewind/Birkholz,
+Ericsson/Fraunhofer, May 2026): Defines an architecture for
+auditing AI agent delegation, identifying six Potential Work Items
+(WI-1 through WI-6). SOOS GAR (draft-sato-soos-gar-03) provides
+normative implementations of WI-1, WI-4, WI-5, and WI-6. PEER
+addresses the cross-domain case their draft explicitly does not
+solve: "correlation emerges from consistent use of shared
+identifiers across all participants" fails when participants have
+independent GECs.
+
+draft-prakash-aip-00 (AIP): Invocation-Bound Capability Tokens
+(IBCT) at the transport layer. AIP IBCT is a candidate transport
+token for the PEER mutual attestation handshake. AIP and PEER
+compose at the transport/session boundary; they do not compete.
+The Provenance Paradox (arXiv:2603.18043) by the same author is
+cited in PEER §1 as empirical motivation for kernel-enforced
+attestation.
+
+arXiv:2603.18043 (Provenance Paradox, Prakash 2026): Demonstrates
+that self-reported quality scores in multi-agent systems perform
+worse than random. Cited in PEER §1 as the empirical baseline
+establishing that honor-system delegation fails adversarially.
+
+draft-klrc-aiagent-auth-02 (AIMS, Kasselman et al.): AI agent
+authentication via WIMSE + SPIFFE + OAuth. PEER begins after
+authentication is established; AIMS and PEER compose at the
+authentication/session boundary.
+
+WIMSE (draft-ietf-wimse-workload-identity): Workload identity
+substrate. KIA (draft-sato-soos-kia-03) is compatible with WIMSE
+identity substrates and is the persistent identity layer PEER uses.
+
+---
+
+## SECTION 5 — Normative SOOS Cross-References
+
+This draft depends on:
+  KIA-03    (draft-sato-soos-kia-03) — persistent agent identity;
+              mutual attestation handshake uses KIA
+  AEP-02    (draft-sato-soos-aep-02) — session governance; PTR
+              carried as AEP session metadata; ptxn_id in ALE fields
+  GAR-03    (draft-sato-soos-gar-03) — audit record; ALE-PEER-01
+              through ALE-PEER-04 candidate registration
+  RGP-00    (draft-sato-soos-rgp-00) — capability discovery pre-call
+              gate; rgp_resource_id in PTR
+  ACD-00    (draft-sato-soos-acd-00) — compliance disclosure pre-call
+              gate; acd_session_id in PTR (conditional)
+  KEE-00    (draft-sato-soos-kee-00) — ptxn_id derivation function
+              added as minor kernel API extension
+
+The following drafts depend on this draft (post-Vienna):
+  PEER-01   (draft-sato-soos-peer-01) — full normative specification
+  FAIP-[TBD] — federated multi-agent pools; FAIP agents in
+              cross-principal transactions use PEER (OQ-PEER-08)
+
+---
+
+## SECTION 6 — Vienna / Datatracker Status
+
+Draft identifier:   draft-sato-soos-peer-00
+Submission:         July 11, 2026 (hard deadline, pre-Vienna)
+Version:            -00 (problem statement + architecture)
+Datatracker URL:    https://datatracker.ietf.org/doc/draft-sato-soos-peer/
+Web page:           https://soosproject.ai/drafts/peer
+llms.txt:           https://soosproject.ai/drafts/peer/llms.txt
+
+IETF 126 Vienna (July 18–24, 2026) engagement targets:
+  - AUDIT BoF (if convened): PEER as cross-domain case filling
+    Kuehlewind/Birkholz open item; GAR as WI-1/WI-4/WI-5/WI-6
+    reference implementation
+  - WIMSE WG: KIA identity substrate; ptxn_id as cross-principal
+    WIMSE-compatible transaction identifier
+  - Pre-Vienna outreach (by July 14): Birkholz
+    (henk.birkholz@ietf.contact) — draft-sato-soos-peer-00 fills
+    cross-domain gap in draft-kuehlewind-audit-architecture-00;
+    GAR→SCITT Signed Statement mapping (OQ-PEER-09)
+  - Pre-Vienna outreach (by July 14): Sunil Prakash (GitHub:
+    sunilp/aip) — Provenance Paradox cited in PEER §1; AIP IBCT
+    as candidate PEER transport token (DEC-PEER-04)
+
+Post-Vienna (PEER-01) items:
+  OQ-PEER-03: Dispute resolution when GAR chains disagree
+  OQ-PEER-04: ATP Booking Object / ptxn_id normative relationship
+  OQ-PEER-05: Minimum disclosure under APPI/GDPR
+  OQ-PEER-07: Full normative ALE-PEER-01 through -04 schemas
+  OQ-PEER-08: FAIP interaction
+  OQ-PEER-09: GAR Session Block → SCITT Signed Statement mapping
+
+Sprint: SOOS_UpgradeSprint_v18, ORDER 16.5
+Predecessor DRs: DR-PEER-01 (June 27, 2026), DR-PEER-02 (June 29, 2026)

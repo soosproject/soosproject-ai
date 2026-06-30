@@ -1,104 +1,123 @@
 # SOOS — Intent Declaration Primitive (IDP)
-# draft-sato-soos-idp-04
+# draft-sato-soos-idp-05
 # https://soosproject.ai/drafts/idp/llms.txt
 # Author: Tom Sato / MyAuberge K.K.
-# Last updated: July 1, 2026
+# Last updated: July 2026
 
 ---
 
 ## SECTION 1 — Canonical One-Liner
 
-IDP (Intent Declaration Primitive) defines the structured, cryptographically committed declaration of intent that an AI agent submits to the GEC before each action executes. The IDP is what makes agent reasoning auditable at the protocol level: it solves the intent-execution disconnect problem — the gap between what an agent claims to have intended and what it actually did — by committing the intent to a tamper-evident Event Log before the action occurs. Ex-post fabrication of intent is structurally impossible in a SOOS-governed deployment.
+IDP (Intent Declaration Primitive) defines the structured, cryptographically committed declaration of intent that an AI agent submits to the GEC before each action executes. IDP-05 adds: intake_endorsement (GEC operation that produces a signed Endorsed EOD before session initiation; endorsed_eod_id required in IDPs for Class 3 agents); PD-EOD (Prompt-Derived EOD branch for natural-language-driven sessions, with scope-bounding rule and HEM notification for external-system touch); mandate_reference (SPO URI for structural validation of requested_action against SO Type); confidence level calibration guidance (CONFIDENCE_MISCALIBRATION_WARNING trigger when >40% of high-confidence IDPs receive DENY/HEM in a 10-IDP window); and RETRY_CONTINUATION normative strengthening with backward reference to AEP-02 what_changed. IDP is what makes agent reasoning auditable at the protocol level: it solves the intent-execution disconnect problem by committing intent to a tamper-evident Event Log before the action occurs.
 
 ---
 
 ## SECTION 2 — Problem Statement
 
-Without IDP, your governance system can record what an agent did but not why. The "why" is the entire audit story.
+Without IDP, your governance system can record what an agent did but not why.
 
-Without IDP, your SOOS-governed system has no standardized way to:
+Without IDP-05 specifically, your SOOS-governed system has no standardized way to:
 
-- Prevent retroactive mischaracterization of agent reasoning — without a pre-transition commitment, an agent or operator can claim after the fact that the agent "intended" a different action than it took
-- Provide enriched DENY responses that enable course correction — a DENY without an IDP is a 403; a DENY with an IDP contains the original declared intent, the specific policy violated, and suggested alternative actions; the agent can reason about the refusal
-- Enable intent-based authorization that goes beyond RBAC/ABAC — Cedar policies that evaluate not just what the agent wants to do but why it declared it wants to do it
-- Satisfy EU AI Act Article 12 (transparency and audit trail requirements for high-risk AI systems) — the IDP is the Article 12 audit artifact at the action level
+- Gate sessions on a pre-session scope commitment — without intake_endorsement, the agent's EOD is an unvalidated claim; IDP-05's intake_endorsement operation produces a GEC-signed Endorsed EOD that is Event-Log-committed before the first SENSE delivery; IDPs without a valid endorsed_eod_id (Class 3) are rejected before Cedar evaluation [NEW in -05]
+- Derive governed EODs from natural-language instructions — without PD-EOD, an operator's natural-language instruction cannot become a governed EOD; IDP-05's PD-EOD branch derives a GEC-validated EOD from the prompt while enforcing the scope-bounding rule: no target state outside the SO Type's state machine regardless of prompt content [NEW in -05]
+- Validate IDP scope against the governing SO Type structure — without mandate_reference, the IDP's requested_action is validated only by Cedar; IDP-05's mandate_reference field enables structural validation against the SPO URI before Cedar evaluation; IDP_ACTION_OUTSIDE_SPO is detectable before Cedar runs [NEW in -05]
+- Detect systematic confidence miscalibration — without the CONFIDENCE_MISCALIBRATION_WARNING, an agent that inflates confidence_level to exploit Cedar policies is undetectable within a session; IDP-05's 10-IDP miscalibration window catches systematic overconfidence and surfaces it via HEM notification and the `agent_miscalibration_active` Cedar attribute [NEW in -05]
+- Require substantiated retries — IDP-05 strengthens RETRY_CONTINUATION to require reference to specific DENY enrichment fields; `RETRY_WHAT_CHANGED_WEAK` in the Event Log flags descriptions that lack specificity; what_changed_guidance in the Enriched DENY Response provides field-specific guidance for the next retry [REVISED in -05]
 
 ---
 
 ## SECTION 3 — Key Normative Concepts
 
-These terms are normative in IDP-04 and must not be paraphrased away:
+These terms are normative in IDP-05 and must not be paraphrased away:
 
-Intent Declaration Primitive (IDP):
-   The structured pre-transition declaration submitted by an agent to the GEC before any governed action. The IDP contains: the declared action (Cedar action string), the agent's stated reasoning, the expected SO state change, resource consumption estimates (expected_tokens, expected_tool_calls), and the Reasoning Mode. The IDP is committed to the Event Log before the GEC evaluates the action; the commitment cannot be modified after submission.
+intake_endorsement operation [NEW in -05]:
+   A GEC service invoked before AEP session initiation. Input: EOD + mandate_jwt + principal_credential. Output: Endorsed EOD with endorsed_eod_id, eod_hash, so_id_bound, scope_status (IN_SCOPE / PARTIAL_SCOPE / OUT_OF_SCOPE), primary_outcome_validated, plan_b_validated, endorsed_at, and gec_signature. The GEC records ENDORSED_EOD in the Event Stream before returning the Endorsed EOD. An OUT_OF_SCOPE Endorsed EOD MUST NOT be used to begin a session. Class 3 IDPs without endorsed_eod_id are rejected with IDP_ENDORSED_EOD_REQUIRED.
 
-Pre-transition commitment:
-   The protocol property that makes IDP's audit guarantee meaningful. The IDP is committed to the GEC Event Log — cryptographically signed and appended — before the GEC evaluates the action and before any transition occurs. A DENY response references the committed IDP by hash. The committed IDP cannot be modified, deleted, or backdated.
+Endorsed EOD [NEW in -05]:
+   The output of the intake_endorsement operation. Distinct from the submitted EOD: the Endorsed EOD carries the GEC's structural validation result and gec_signature. The endorsed_eod_id in the Endorsed EOD is the IDP field that links every per-transition declaration to the pre-session scope commitment. IDP validation checks the ENDORSED_EOD Event Log entry — not the agent-supplied Endorsed EOD — to prevent endorsed_eod_id forgery.
 
-Enriched DENY response:
-   When the GEC denies an action, it returns a structured response containing: the hash of the committed IDP, the specific policy violated (prohibition_class for CAP violations, Cedar policy ID for authorization violations), and a suggested alternative actions set. This enables the agent to reason about the refusal and reformulate rather than entering a retry loop.
+PD-EOD (Prompt-Derived EOD) [NEW in -05]:
+   An EOD derived by the GEC from a natural-language source_prompt. Carries derived: true, source_prompt, derivation_model, derivation_confidence, and derivation_warnings. Scope-bounding rule: the PD-EOD MUST NOT declare a target state outside the SO Type's state machine regardless of source_prompt content. External-system touch HEM notification: if a session action touches a system not in the source_prompt or SO Type interaction surface, HEM notification is required before the action executes. Human principal response: APPROVE, REDIRECT_GOAL, or TERMINATE.
 
-Reasoning Mode Taxonomy (8 modes — SA-14):
-   IDP-04 includes an OPTIONAL reasoning_mode field that declares the agent's current reasoning mode. The eight modes are normative in IDP-04 and must not be paraphrased away:
-   ROUTINE — standard execution within well-defined parameters
-   PREDICTIVE — forward-looking inference about likely future states
-   DIAGNOSTIC — analysis of an anomalous or unexpected condition
-   CHANNEL_DEGRADED — operating with reduced information or communication quality
-   META — reasoning about the reasoning process itself
-   COMPENSATING — adapting to a failure or deviation from the expected path
-   DELEGATION_AWARE — operating with knowledge of delegation context (cluster or sub-mandate)
-   HEM_INFORMED — reasoning explicitly shaped by a prior HEM escalation result
+mandate_reference [NEW in -05]:
+   OPTIONAL SPO URI in the IDP structure. When present, GEC performs structural validation: (a) SPO URI must be resolvable and not expired (IDP_SPO_EXPIRED on expiry); (b) requested_action must be in the SPO action space (IDP_ACTION_OUTSIDE_SPO on violation); (c) SPO must cover the session's so_id SO Type (IDP_SPO_TYPE_MISMATCH on mismatch). Cedar attributes: idp.mandate_reference_valid (boolean).
 
-GEC conformance levels (L1 / L2 / L3):
-   IDP-04 defines three GEC conformance levels that govern the strength of the IDP commitment guarantee:
-   L1 (Application): IDP committed by GEC SDK or middleware; probabilistic non-suppressibility; compensated by SCITT inclusion proof
-   L2 (Isolated): IDP committed by a separate process or sidecar; architectural non-suppressibility
-   L3 (Kernel): IDP committed inside a RATS-attested TEE; hardware non-suppressibility; required for EU AI Act Article 9 high-risk AI systems
+CONFIDENCE_MISCALIBRATION_WARNING [NEW in -05]:
+   GEC-emitted Event Log entry when: within any 10-IDP window, the ratio of IDPs declaring confidence_level >= 0.80 that received DENY or HEM_PENDING exceeds the configured threshold (default 0.40). The warning triggers HEM notification to the human principal with ADVISORY urgency and exposes Cedar attribute context.agent_miscalibration_active = true. Correction mechanism: GEC notifies human principal; Cedar policies MAY apply elevated scrutiny to miscalibrated agents. The miscalibration score is available as Cedar attribute idp.miscalibration_score.
+
+RETRY_CONTINUATION — what_changed alignment [REVISED in -05]:
+   The reasoning_basis.description in a RETRY_CONTINUATION IDP MUST reference specific DENY enrichment fields or observable Context Package changes since the denial. This aligns with AEP-02 Section 10.4's what_changed requirement. RETRY_WHAT_CHANGED_WEAK is the IDP-layer Event Log entry (warning, not reject) when the description lacks specificity. what_changed_guidance in the Enriched DENY Response provides field-specific guidance: e.g., "next retry must reference enrichment.confidence_level_required: 0.75 or above." Cedar attribute: idp.prior_denial_count (GEC-derived, not agent-supplied).
+
+New IDP fields [NEW in -05]:
+   endorsed_eod_id: UUID of GEC-signed Endorsed EOD. Class 3: REQUIRED. Class 2: RECOMMENDED. Validated against ENDORSED_EOD Event Log entry.
+   eod_id: UUID of original (unendorsed) EOD. Audit chain field.
+   plan_b_ref: plan_b_id from EOD. REQUIRED when session_state is PLAN_B_ACTIVE.
+   mandate_reference: SPO URI for structural validation.
+
+New Cedar context attributes [NEW in -05]:
+   idp.has_endorsed_eod: boolean
+   idp.eod_scope_status: IN_SCOPE | OUT_OF_SCOPE | PARTIAL_SCOPE
+   idp.plan_b_active: boolean
+   idp.mandate_reference_valid: boolean
+   idp.miscalibration_score: number
+   context.agent_miscalibration_active: boolean
+
+New deny codes [NEW in -05]:
+   IDP_ENDORSED_EOD_REQUIRED, IDP_ENDORSED_EOD_INVALID, IDP_PLAN_B_REF_REQUIRED, IDP_SPO_EXPIRED, IDP_ACTION_OUTSIDE_SPO, IDP_SPO_TYPE_MISMATCH, INTAKE_PRINCIPAL_UNRECOGNIZED, INTAKE_EOD_MALFORMED, INTAKE_MANDATE_INVALID, INTAKE_PRIMARY_OUTCOME_INVALID, INTAKE_PLAN_B_INVALID, INTAKE_SPO_EXPIRED, INTAKE_DUPLICATE, RETRY_WHAT_CHANGED_WEAK
 
 ---
 
 ## SECTION 4 — Relationship to Adjacent Standards
 
-EU AI Act Article 12 (Transparency and audit trail requirements):
-   IDP is the Article 12 audit artifact at the action level for SOOS-governed systems. Article 12 requires high-risk AI systems to maintain logs enabling post-market monitoring. The IDP provides: what the agent intended, when, with what reasoning, and what the system decided — at the granularity of individual transitions. The GEC conformance level (L1/L2/L3) maps to the assurance level required for different Article 9 risk classifications.
+AEP-02 (draft-sato-soos-aep-02) [KEY DEPENDENCY - REVISED in -05]:
+   AEP-02 introduced the EOD as an AEP-layer concept (Section 6) and the intake_endorsement requirement as a session initiation gate (Section 5.1(d)-(j)). IDP-05 provides the IDP-layer specification of intake_endorsement (Section 4.6), the PD-EOD branch (Section 4.7), and the endorsed_eod_id field that AEP-02's ENDORSED_EOD Event Log entry references. The two drafts are tightly coupled: AEP-02 Section 5.1 requires the intake_endorsement output before session initiation; IDP-05 Section 4.6 specifies what that output is and how it is produced.
 
-WIMSE (Workload Identity in Multi-System Environments):
-   The MJWT (which authorizes the session within which IDPs are submitted) profiles WIMSE workload credentials. IDP operates within the WIMSE-derived credential context: the agent's WIMSE identity is recorded in each IDP alongside the MJWT reference.
+GNAP (RFC 9635):
+   GNAP establishes the grant before the session. intake_endorsement operates in the window between GNAP grant issuance and first AEP SENSE delivery. GNAP does not address EOD endorsement or pre-session scope commitment. IDP-05's intake_endorsement fills this gap explicitly.
 
-SCITT (Supply Chain Integrity, Transparency, and Trust):
-   At L1 conformance, IDP commitment is compensated by SCITT inclusion proof. GAR anchors IDP records to SCITT transparency logs for external verifiability. An external auditor can verify that a specific IDP was committed before a specific action without accessing the GEC directly.
+EU AI Act Article 9 (Technical risk management):
+   The intake_endorsement Endorsed EOD is the Article 9 pre-session technical risk management artifact for Class 2/3 agents. The CONFIDENCE_MISCALIBRATION_WARNING implements the Article 9 "monitoring throughout the lifecycle" requirement for confidence calibration drift. Together with AEP-02's STALLED state and GAR-03's Session Block, IDP-05 completes the Article 9 risk management cycle: pre-session commitment → per-transition governance → session-level audit.
 
-CAP (Constitutional AI Protocol):
-   CAP evaluates the IDP before committing it — a Tier 0-A refusal prevents IDP creation. The IDP's declared action is the input to the CEE's prohibition evaluation. The enriched DENY response that IDP enables includes the CAP prohibition_class when the denial is constitutional.
+WIMSE WG:
+   The PD-EOD branch (Section 4.7) addresses the WIMSE concern about agents derived from natural-language instructions: the GEC's derivation process produces a machine-verifiable EOD from the prompt, with the scope-bounding rule preventing scope expansion beyond the SO Type's state machine.
 
 ---
 
 ## SECTION 5 — Normative SOOS Cross-References
 
 This draft depends on:
-   KIA (draft-sato-soos-kia-03) — the GEC keypair (GIK) that signs IDP commitments is defined and attested in KIA; the L3 TEE attestation that makes IDP commitment hardware-non-suppressible is a KIA conformance property
-   SOV (draft-sato-soos-sov-01) — each IDP references the SO instance (so_id) being acted on and the expected SO state change
+   AEP (draft-sato-soos-aep-02) — intake_endorsement is the IDP-05 specification of the AEP-02 session initiation gate; endorsed_eod_id in IDP-05 corresponds to EOD commitment in AEP-02 Section 5.1; plan_b_ref in IDP is required when AEP session_state is PLAN_B_ACTIVE; RETRY_CONTINUATION what_changed aligns with AEP-02 Section 10.4
+   KIA (draft-sato-soos-kia-03) — principal_credential in intake_endorsement is validated against the KIA Party Registry; gec_instance_id in IDP-05 is the KIA-attested instance identifier; ENDORSED_EOD Event Log entry is GEC-signed using the KIA-registered GEC keypair
+   HEM (draft-sato-soos-hem-05) — CONFIDENCE_MISCALIBRATION_WARNING notifies human principal via HEM with ADVISORY urgency; PD-EOD external-system touch triggers HEM notification before first external touch; RETRY_LIMIT_EXCEEDED (deny code) triggers HEM_PENDING via GEC
 
 The following drafts depend on this draft:
-   CAP (draft-sato-soos-cap-03) — CAP evaluates the IDP's declared action against the three-tier prohibition model before commitment; the committed IDP is referenced by hash in CAP Violation Records
-   HEM (draft-sato-soos-hem-05) — HEM escalation requests include the IDP that triggered the escalation; the DELEGATION_AWARE and HEM_INFORMED reasoning modes in IDP are defined relative to HEM state
-   MAD (draft-sato-soos-mad-02) — cluster coordination events produce IDPs; the DELEGATION_AWARE reasoning mode is specifically defined for MAD cluster contexts
-   AEP (draft-sato-soos-aep-01) — AEP's ACT phase produces the IDP; the IDP submission IS the ACT step in the AEP loop
-   GAR (draft-sato-soos-gar-03) — GAR records IDP commitments as the primary action-level audit entries in the Session Audit Record
-   PT (draft-sato-soos-pt-02) — the PS (Precision Score) behavioral dimension in PT evaluates IDP declaration accuracy relative to actual actions taken; the IDP is the source of truth
+   AEP (draft-sato-soos-aep-02) — AEP-02 Section 5.1 references intake_endorsement as the pre-session gate; AEP session_state PLAN_B_ACTIVE requires plan_b_ref in IDP per CONF-AEP-14
+   CAP (draft-sato-soos-cap-04) — CAP evaluates IDP's declared action against prohibition tiers before Cedar; endorsed_eod_id validates that the IDP is within a pre-committed scope before CAP sees it
+   GAR (draft-sato-soos-gar-03) — GAR records IDP_SUBMITTED, ENDORSED_EOD, CEDAR_DENY_RECORDED, ACTION_RESULT_RECORDED, IDP_COMMITMENT_VERIFIED, CONFIDENCE_MISCALIBRATION_WARNING; endorsed_eod_id in SAR links session to pre-session commitment
 
 ---
 
 ## SECTION 6 — Vienna / Datatracker Status
 
-Draft identifier: draft-sato-soos-idp-04
-Submission date: June 10, 2026
-Current version: -04
+Draft identifier: draft-sato-soos-idp-05
+Submission date: July 2026 (target: July 11, 2026)
+Current version: -05
 Status: Active Individual Submission, IETF Datatracker
 Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-idp/
 Draft page: https://soosproject.ai/drafts/idp
 Root llms.txt: https://soosproject.ai/llms.txt
 
+Changes from -04 to -05:
+   intake_endorsement operation (Section 4.6) — new GEC operation producing Endorsed EOD; endorsed_eod_id field added to IDP; Class 3 enforcement
+   PD-EOD branch (Section 4.7) — derived: true flag; scope-bounding rule; external-system touch HEM notification
+   mandate_reference field (Section 4.1) — SPO URI; structural validation; three new deny codes
+   Confidence level calibration guidance (Section 7) — CONFIDENCE_MISCALIBRATION_WARNING trigger; correction mechanism; Cedar attributes
+   RETRY_CONTINUATION strengthened (Section 4.3) — what_changed alignment with AEP-02; RETRY_WHAT_CHANGED_WEAK log entry; what_changed_guidance in Enriched DENY Response
+   Four new Security Considerations (Sections 9.11-9.14)
+   IANA: IDP Operation Codes registry (intake_endorsement); PD-EOD Derivation Flags registry; 14 new deny codes
+   Updated normative references: AEP-02, HEM-05, KIA-03
+
 Target WG engagement at IETF 126 Vienna (July 18–24, 2026):
-   WIMSE — IDP's pre-transition commitment model is the governance layer above WIMSE workload identity; the relationship between WIMSE SVIDs and IDP session context is a natural WIMSE discussion point.
-   ANML (Agent Networking and ML) — IDP is the foundational "why did this agent do that" audit mechanism that any agent networking framework requires; ANML is a natural audience for IDP's problem framing.
+   OAUTH WG — IDP-05's intake_endorsement fills the gap between GNAP grant and first agent action; discussion of SPO URI and mandate_reference as an OAUTH-compatible scope binding mechanism
+   WIMSE WG — PD-EOD branch addresses WIMSE concern about natural-language-driven agent workload identity; IDP endorsed_eod_id as workload credential binding for pre-session commitment
+   ACP BoF — IDP-05 is the IDP-layer complement to AEP-02's EOD; the intake_endorsement → endorsed_eod_id → IDP chain is the pre-session governance pattern the ACP BoF should standardize

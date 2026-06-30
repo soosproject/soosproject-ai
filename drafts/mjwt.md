@@ -1,7 +1,7 @@
 # Mandate JWT
 
 Layer 0 — Foundation
-**draft-sato-soos-mjwt-01**
+**draft-sato-soos-mjwt-02**
 See this URL for full draft protocol [Datatracker](https://datatracker.ietf.org/doc/draft-sato-soos-mjwt/)
 See [SOOS Stack](/stack) implementation
 
@@ -9,11 +9,11 @@ See [SOOS Stack](/stack) implementation
 
 ## The problem
 
-Agentic AI systems execute on behalf of principals. The principal's intent — what the agent is authorised to do, for how long, within what resource limits, at what trust level — must be carried in a machine-readable credential that the kernel can verify, the agent cannot modify, and auditors can reconstruct after the fact.
+Agentic AI systems execute on behalf of principals. The principal's intent — what the agent is authorised to do, for how long, within what resource limits, at what trust level, and under what data subject consent — must be carried in a machine-readable credential that the kernel can verify, the agent cannot modify, and auditors can reconstruct after the fact.
 
-MJWT defines the Mandate JWT: the signed credential that encodes a principal's authorisation to an agent as a kernel-verifiable token. Not as a session cookie or API key. As a standards-track JWT profile with a defined claim set, a normative delegation chain model, and an explicit resource envelope — issued by a principal, verified by a kernel, referenced on every governance record produced during execution.
+MJWT defines the Mandate JWT: the signed credential that encodes a principal's authorisation to an agent as a kernel-verifiable token. Not as a session cookie or API key. As a standards-track JWT profile with a defined claim set, a seven-dimensional delegation narrowing model, consent state binding, and an explicit resource envelope — issued by a principal, verified by a kernel, referenced on every governance record produced during execution.
 
-**The design premise:** the mandate is the contract between the principal and the kernel. MJWT is the format that makes that contract machine-readable, cryptographically bound, and non-repudiable.
+**The design premise:** the mandate is the contract between the principal and the kernel. MJWT is the format that makes that contract machine-readable, cryptographically bound, non-repudiable, and consent-grounded.
 
 ---
 
@@ -21,178 +21,221 @@ MJWT defines the Mandate JWT: the signed credential that encodes a principal's a
 
 ### IETF Working Groups
 
-MJWT is directly relevant to the OAUTH working group. It is a JWT profile — it builds on RFC 7519 (JWT), RFC 8693 (Token Exchange), and the OIDF-2025-01 threat model for agentic AI delegation. MJWT introduces claims that are not present in existing JWT profiles: `mandate_scope`, `resource_envelope`, `trust_floor`, `goal_scope`, and the `delegation_chain` array for attenuated delegation.
+MJWT is directly relevant to two working groups at IETF 126 Vienna.
 
-MJWT is also relevant to the WIMSE working group. The `delegation_chain` claim encodes the principal hierarchy in a format that WIMSE workload identity specifications can reference when evaluating cross-workload delegation authority.
+**WIMSE:** MJWT is a WIMSE workload credential profile. Where WIMSE provides the workload identity foundation (SVIDs, credential lifecycle), MJWT adds the governance layer: Sovereign Object instance binding, Cedar action set ceiling, human principal linkage, and — new in -02 — consent state. WIMSE is the agent's passport; MJWT is the authorisation permit with the terms of the mission written into it.
 
-MJWT-02 introduces a further WIMSE-relevant extension: the `consent_scope` claim. Where existing workload identity tokens carry authentication and authorisation context, `consent_scope` carries data governance state — the data subject's consent reference, purpose codes, governing law, and expiry — bound cryptographically to the mandate at issuance. This is a new category of claim for workload identity: the token does not merely assert what the workload may do, but under what legal consent the workload is operating. The Cedar policy engine evaluates `consent_scope` fields as execution context on every relevant action, and the GAR audit record carries mandatory provenance fields tracing each enforcement decision back to the specific law article that governed it. WIMSE implementations that carry MJWT mandate credentials gain a complete consent governance chain — from principal issuance through kernel enforcement to tamper-evident audit — without additional infrastructure.
+The `consent_scope` claim introduced in -02 is a new category of claim for workload identity tokens. Existing workload identity tokens assert what the workload may do. `consent_scope` asserts under what legal consent the workload is operating: the data subject's consent reference, purpose codes, governing law citation, and expiry are bound cryptographically to the mandate at issuance. The Cedar policy engine evaluates `consent_scope` fields as execution context on every relevant action. The GAR audit record carries mandatory provenance fields tracing each enforcement decision back to the specific law article that governed it. WIMSE implementations that carry MJWT mandate credentials gain a complete consent governance chain — from principal issuance through kernel enforcement to tamper-evident audit — without additional infrastructure. This positions MJWT as a candidate AI agent governance profile for WIMSE.
 
-The relationship between MJWT and OAuth 2.0 token exchange (RFC 8693) is explicitly defined: MJWT tokens MAY be issued through a token exchange flow where the subject token is an OAuth access token and the requested token is a Mandate JWT. MJWT does not replace OAuth; it extends it for the kernel governance use case.
+**OAuth WG:** MJWT builds directly on RFC 7519 (JWT), RFC 8693 (Token Exchange), and the OIDF-2025-01 threat model. The `cedar_actions` claim corresponds to `authorization_details` in RFC 9396 (Rich Authorization Requests). MJWT tokens MAY be issued through a token exchange flow where the input token is an OAuth access token and the output is a Mandate JWT. MJWT does not replace OAuth; it extends it for the kernel governance use case.
+
+The `AI_AGENT_OPERATION` purpose code in -02 is the first named AI-agent-specific consent purpose in any protocol specification. It addresses the novel consent obligation that arises when an agent acts autonomously on a data subject's behalf — not merely processing their data, but taking actions with legal or operational consequences in their name.
 
 To engage on MJWT: [IETF Datatracker](https://datatracker.ietf.org/doc/draft-sato-soos-mjwt/) · file issues at [GitHub](https://github.com/soosproject/soos-drafts)
 
 ### App builders
 
-If you are building an agentic AI system today, the absence of a mandate credential format means your agents carry authorisation as environment variables, system prompts, or bespoke config objects — none of which are verifiable by a kernel, auditable by a third party, or enforceable as a resource constraint.
+If you are building an agentic AI system today, the absence of a mandate credential format means your agents carry authorisation as environment variables, system prompts, or bespoke config objects — none of which are verifiable by a kernel, auditable by a third party, or enforceable as a resource constraint. And none of them carry the consent state that data protection law will increasingly require before an AI agent may process personal data on a user's behalf.
 
-MJWT closes this gap by specifying the JWT profile for agent mandates. The MJWT token is what a principal issues to an agent before execution begins. The kernel verifies the token signature before accepting the session. Every governance record produced during execution references the mandate_id from the MJWT. At the end of the session, the full execution can be reconstructed from the mandate_id alone.
+MJWT closes this gap. The MJWT token is what a principal issues to an agent before execution begins. The kernel verifies the token signature at Step 1. Every governance record produced during execution references the `jti` (mandate_id) from the MJWT. The `consent_scope` claim tells the kernel exactly what the data subject consented to, under which law, and until when — without the kernel needing to query an external consent service on every action.
 
-Without MJWT: authorisation is implicit and unverifiable. With MJWT: authorisation is explicit, kernel-verified, resource-bounded, and reconstruction-ready.
+With MJWT: authorisation is explicit, kernel-verified, resource-bounded, consent-grounded, and reconstruction-ready. The `sub_agent_scope` claim means consent scope never inflates across a multi-agent delegation chain without the root principal's explicit intent.
 
 [TypeScript example →](https://github.com/soosproject/soos-examples/tree/main/mjwt)
 
 ### Risk managers and legal
 
-The mandate_id in the MJWT is the primary audit key for every governance record in GAR. Every HEM escalation, every CAP prohibition trigger, every PT trust state transition, every ALE lifecycle event is recorded in GAR with the mandate_id from the active MJWT. This means the full execution history of any agent action is reconstructible from the mandate_id — without requiring session logs, application-layer records, or agent-reported data.
+The `mandate_id` (jti) in the MJWT is the primary audit key for every governance record in GAR. Every HEM escalation, every CAP prohibition trigger, every consent exception activation, every ALE lifecycle event is recorded in GAR with the `mandate_id` from the active MJWT. The full execution history of any agent action is reconstructible from the `mandate_id` alone.
 
-For legal non-repudiation: the MJWT is signed by the principal at issuance. The signature cannot be modified after issuance. The delegation_chain claim records every principal in the authority chain. If an agent action is disputed, the MJWT provides the cryptographic proof of what the principal authorised — and the GAR records prove what the agent actually did.
+For data protection compliance: the `consent_scope` claim in MJWT-02 binds the agent's data processing authority directly to the data subject's consent record. The `purpose_codes` array aligns with APPI Article 17's purpose specification obligation. The `governing_law` field carries the specific law article (e.g., `APPI:2003:Art17`) so that every CAP enforcement decision is traceable to the legal instrument that governed it. When a regulator asks "under what consent did the agent process this personal data?", the GAR record and the MJWT together provide the complete, tamper-evident answer.
+
+The `AI_AGENT_OPERATION` purpose code is new legal territory. A data subject who consents under this code is consenting to an agent acting autonomously in their name — not merely processing their data, but taking actions with binding consequences. Organisations deploying MJWT-governed agents under `AI_AGENT_OPERATION` should obtain legal review of whether their current consent forms and privacy notices cover this purpose, particularly in Japan (APPI) and the EU (GDPR Article 22).
 
 ### Agentic AI and coding assistants
 
 **What to tell your coding assistant:**
 
-> "I need to implement SOOS MJWT (Mandate JWT, draft-sato-soos-mjwt-01). This is an IETF JWT profile for agentic AI mandate credentials. The MJWT has standard JWT claims (iss, sub, aud, exp, iat, jti) plus SOOS-specific claims: mandate_scope (Cedar action set), resource_envelope (compute/memory/storage/network/duration limits), trust_floor (minimum PT score for continued execution), goal_scope (optional high-level goal binding), and delegation_chain (array of prior MJWTs in an attenuated delegation). The kernel verifies MJWT signature before accepting any agent session. mandate_id (= jti) is referenced on every GAR record."
+> "I need to implement SOOS MJWT (Mandate JWT, draft-sato-soos-mjwt-02). This is an IETF JWT profile for agentic AI mandate credentials. The MJWT has standard JWT claims (iss, sub, aud, exp, iat, jti) plus SOOS-specific claims: `cedar_actions` (Cedar action set the agent may request), `human_principal_id` (the human who authorised the mandate), `so_id` (the specific Sovereign Object instance), `mandate_ceiling` (max GEC conformance level), `delegation_chain` (full issuance history), and — new in -02 — `consent_scope` (data subject consent state including purpose_codes, governing_law, jurisdiction, expiry, and sub_agent_scope). The GEC runs a 13-step verification protocol: audience binding first, then algorithm check (reject alg:none), then signature, then revocation, then SO binding, then consent scope validation. The Narrowing Property has seven dimensions — the 7th is consent scope, which MUST NOT expand across delegation hops. `sub_agent_scope` values: INHERIT >= RESTRICT >= NONE; default is RESTRICT."
 
-**Key MJWT claims:**
+**Key MJWT-02 claims:**
 
-| Claim | Type | Description |
-|---|---|---|
-| `jti` (= mandate_id) | string | Unique mandate identifier — primary audit key |
-| `iss` | string | Principal that issued this mandate |
-| `sub` | string | Agent identity (KIA gec_id or agent identifier) |
-| `aud` | string | GEC instance this mandate is bound to |
-| `exp` | integer | Unix timestamp of mandate expiry |
-| `mandate_scope` | array | Cedar action identifiers the agent is authorised to invoke |
-| `trust_floor` | float | Minimum PT composite score for continued execution |
-| `goal_scope` | string | Optional: high-level goal this mandate is intended to achieve |
-| `resource_envelope` | object | Resource limits (see below) |
-| `delegation_chain` | array | Prior MJWT jti values in attenuation chain (if delegated) |
-| `pt_weights` | object | Per-dimension scoring weights for PT engine |
-| `consent_scope` | object | Optional: data subject consent state — reference, purpose codes, governing law, expiry |
+| Claim | Type | Required | Description |
+|---|---|---|---|
+| `jti` (= mandate_id) | string | REQUIRED | Unique mandate identifier — primary audit key |
+| `iss` | string | REQUIRED | Principal or GEC that issued this mandate |
+| `sub` | string | REQUIRED | Agent WIMSE workload identity |
+| `aud` | string | REQUIRED | KIA-attested GEC instance ID |
+| `exp` | integer | REQUIRED | Unix timestamp of mandate expiry |
+| `cedar_actions` | array | REQUIRED | Cedar action identifiers the agent may invoke |
+| `human_principal_id` | string | REQUIRED | The human who authorised this mandate |
+| `so_id` | string | REQUIRED | Sovereign Object instance UUID v7 |
+| `mandate_ceiling` | integer | REQUIRED | 1, 2, or 3 — max GEC conformance level |
+| `delegation_chain` | array | REQUIRED (child) | Full mandate issuance history |
+| `consent_scope` | object | CONDITIONAL | Data subject consent state — see below |
+| `sub_agent_scope` | string | CONDITIONAL | INHERIT \| RESTRICT \| NONE |
+| `purpose_code` | array | OPTIONAL | Top-level purpose codes for audit |
 
-**Resource envelope fields:**
+**`consent_scope` object fields:**
 
 | Field | Type | Description |
 |---|---|---|
-| `max_compute_units` | integer | Maximum compute units for this mandate |
-| `max_memory_bytes` | integer | Maximum memory allocation |
-| `max_storage_bytes` | integer | Maximum storage write |
-| `max_network_egress_bytes` | integer | Maximum outbound network traffic |
-| `max_duration_seconds` | integer | Maximum wall-clock duration |
+| `data_subject_id` | string | Pseudonymized identifier — MUST NOT be directly identifying |
+| `consent_reference` | string | URI or token ID pointing to the consent record |
+| `purpose_codes` | array | Purpose Code Registry entries (e.g., BOOKING, AI_AGENT_OPERATION) |
+| `governing_law` | string | Law citation (e.g., "APPI:2003:Art17") |
+| `jurisdiction` | string | ISO 3166-1 alpha-2 |
+| `expiry` | string | ISO 8601 consent expiry timestamp |
+| `sub_agent_scope` | string | INHERIT \| RESTRICT (default) \| NONE |
 
-**Minimal MJWT example:**
+**Minimal MJWT-02 example with consent_scope:**
 
 ```json
 {
-  "jti": "mandate-a1b2c3d4",
-  "iss": "principal:tom-sato@myauberge.jp",
-  "sub": "agent:procurement-agent-7",
-  "aud": "gec-prod-7f3a2c",
+  "jti": "019547ab-1234-7abc-8def-000000000001",
+  "iss": "hp-001",
+  "sub": "wimse:agent:booking-agent-v2",
+  "aud": "sha256:a3f8c2d1e4b5...",
   "exp": 1749470400,
   "iat": 1749456000,
-  "mandate_scope": ["Action::ReadSupplierData", "Action::DraftPurchaseOrder"],
-  "trust_floor": 0.6,
-  "goal_scope": "Identify three qualified suppliers for Q3 procurement",
-  "resource_envelope": {
-    "max_compute_units": 10000,
-    "max_memory_bytes": 536870912,
-    "max_duration_seconds": 14400
+  "cedar_actions": ["atp:booking:confirm", "atp:booking:cancel"],
+  "human_principal_id": "hp-001",
+  "so_id": "019547ab-1234-7abc-8def-000000000099",
+  "so_type_id": "atp/booking-object/1.0",
+  "mandate_ceiling": 2,
+  "consent_scope": {
+    "data_subject_id": "ps-hp-001-sha256-truncated",
+    "consent_reference": "https://consent.example.jp/records/c-2026-001",
+    "consent_timestamp": "2026-06-15T08:00:00Z",
+    "consenting_party": "SELF",
+    "purpose_codes": ["BOOKING", "AI_AGENT_OPERATION"],
+    "data_categories": ["contact", "travel_preference"],
+    "jurisdiction": "JP",
+    "governing_law": "APPI:2003:Art17",
+    "expiry": "2026-08-15T08:00:00Z",
+    "sub_agent_scope": "RESTRICT"
   },
-  "delegation_chain": []
+  "sub_agent_scope": "RESTRICT",
+  "purpose_code": ["BOOKING", "AI_AGENT_OPERATION"]
 }
 ```
 
 ### Government and regulators
 
-The MJWT delegation_chain claim provides the machine-readable authority trail that regulators need to determine who authorised an AI action. For regulated industries where agent actions may have legal consequences — financial trades, medical decisions, legal filings — the MJWT provides the non-repudiable record of which principal authorised the action, what scope they granted, and whether the agent acted within that scope.
+The MJWT delegation_chain provides the machine-readable authority trail that regulators need to determine who authorised an AI action. For regulated industries where agent actions may have legal consequences — financial trades, medical decisions, procurement — the MJWT provides the non-repudiable record of which principal authorised the action, what scope they granted, and whether the agent acted within that scope.
 
-For AI liability frameworks: MJWT establishes the jurisdictional principle of principal accountability. The iss claim identifies who issued the mandate; the delegation_chain identifies who that principal received authority from. Liability traces back through the chain to the human principal who initiated it.
+The `consent_scope` claim in MJWT-02 directly addresses the consent obligation for AI agent operation that emerging AI governance frameworks identify as requiring clarification: when an AI agent acts as an autonomous principal on a natural person's behalf, what consent is required, and how should it be recorded? The `AI_AGENT_OPERATION` purpose code is MJWT's answer: a distinct purpose code, carried in a signed JWT, evaluated by the kernel before every relevant action, and recorded in the GAR audit record with the specific legal citation that governed the determination.
 
-For collaboration on jurisdiction-specific mandate credential requirements: [tomsato@myauberge.jp](mailto:tomsato@myauberge.jp)
+For jurisdiction-specific mandate credential requirements or government deployment consultations: [tomsato@myauberge.jp](mailto:tomsato@myauberge.jp)
 
 ---
 
 ## Core technology
 
-**Problem:** AI agents carry authorisation in formats that are not kernel-verifiable, not resource-bounded, and not auditable by design. There is no standard JWT profile for the mandate credential that governs agent execution.
+**Problem:** AI agents carry authorisation in formats that are not kernel-verifiable, not consent-grounded, and not auditable by design. There is no standard JWT profile for the mandate credential that governs agent execution.
 
-**Mechanism:** MJWT is a JWT profile. A principal signs the token at issuance, binding the agent identity, the Cedar action scope, the resource envelope, and the PT trust floor. The kernel verifies the signature before accepting the session. Every governance record produced during execution references the jti (mandate_id). The MJWT is the thread that connects every GAR record back to the principal who authorised the execution.
+**Mechanism:** MJWT is a JWT profile. A principal signs the token at issuance, binding the agent identity, the Cedar action scope, the human principal, the data subject consent state, and the delegation ceiling. The kernel verifies the signature and runs a 13-step protocol before accepting the session. Every governance record produced during execution references the jti (mandate_id).
 
-**Output:** A signed JWT — mandate_id, principal identity, agent identity, action scope, resource limits, trust floor, delegation chain — that is the kernel's authority to execute on behalf of the principal. Its expiry is the kernel's authority to stop.
+**Output:** A signed JWT — mandate_id, principal identity, agent identity, action scope, consent state, delegation chain — that is the kernel's authority to execute on behalf of the principal. Its expiry, and the expiry of the embedded consent, are the kernel's authority to stop.
 
-**Who verifies it:** Kernels at session establishment, auditors reconstructing execution history, regulators establishing accountability chains, and relying parties evaluating whether an agent action was within the scope that its principal authorised.
+**Who verifies it:** Kernels at session establishment, auditors reconstructing execution history, regulators establishing accountability chains, and data protection authorities verifying that processing occurred under valid consent.
 
 ---
 
-## The delegation model
+## The delegation model and Narrowing Property
 
-MJWT supports attenuated delegation: a principal may issue a mandate to an agent that itself issues a sub-mandate to a sub-agent. Each delegation step MUST NOT expand scope — it may only attenuate (restrict) the scope of the delegating mandate.
+MJWT enforces a seven-dimensional Narrowing Property across delegation hops. A sub-mandate is always a strict subset of its parent.
 
-| Property | Requirement |
+| Dimension | Narrowing rule |
 |---|---|
-| Scope attenuation | Sub-mandate Cedar action set MUST be a subset of parent mandate action set |
-| Resource attenuation | Sub-mandate resource envelope MUST NOT exceed parent resource envelope |
-| Expiry | Sub-mandate expiry MUST NOT exceed parent mandate expiry |
-| Trust floor | Sub-mandate trust_floor MUST NOT be lower than parent mandate trust_floor |
-| Chain recording | Each delegation appends the parent jti to delegation_chain |
+| Sovereign Object scope | Child `so_id` MUST match parent |
+| Cedar action scope | Child `cedar_actions` MUST be subset of parent |
+| Permitted SO states | Child `permitted_states` MUST be subset of parent |
+| Permitted lifecycle phases | Child `permitted_phases` MUST be subset of parent |
+| Temporal validity | Child `exp` MUST NOT exceed parent `exp` |
+| Mandate ceiling | Child `mandate_ceiling` MUST NOT exceed parent |
+| **Consent scope** *(new in -02)* | `sub_agent_scope` ordering: INHERIT ≥ RESTRICT ≥ NONE |
 
-A kernel that receives an MJWT with a non-empty delegation_chain MUST verify the full chain before accepting the session. A chain that violates the attenuation requirement is invalid; the session is rejected.
+The `sub_agent_scope` default is **RESTRICT**: sub-agents do not automatically inherit full consent scope. This prevents accidental consent scope inflation in multi-agent deployments. To grant inheritance, the issuing principal must explicitly set `sub_agent_scope: INHERIT`.
+
+---
+
+## Purpose Code Registry
+
+MJWT-02 introduces the SOOS MJWT Purpose Code Registry (IANA, Specification Required). Initial codes:
+
+| Code | Description | Consent required |
+|---|---|---|
+| `BOOKING` | Agent booking a service on principal's behalf | No (general operation) |
+| `PERSONAL_DATA_PROCESSING` | Agent processing personal data | Yes (APPI Art. 17) |
+| `SERVICE_DELIVERY` | Delivering a service to the principal | No |
+| `LEGAL_OBLIGATION` | Processing required by law | No (Art. 17 exception) |
+| `MARKETING` | Marketing communications | Yes (explicit) |
+| `ANALYTICS` | Statistical analysis | Yes (explicit) |
+| `THIRD_PARTY_TRANSFER` | Transfer to third party | Yes (APPI Art. 27) |
+| `OVERSEAS_TRANSFER` | Transfer to overseas third party | Yes (APPI Art. 28) |
+| `AI_AGENT_OPERATION` | Agent acting autonomously on data subject's behalf | Yes (novel purpose) |
+| `HUMAN_SUPERVISION` | Processing under active human supervision | Context-dependent |
+| `AUDIT_INSPECTION` | Audit or regulatory review access | Authorized Principal |
+
+`AI_AGENT_OPERATION` is the first named AI-agent-specific consent purpose in any protocol specification. It is distinct from `PERSONAL_DATA_PROCESSING` because the data subject is not merely consenting to their data being processed — they are consenting to the agent acting as an autonomous principal in their name.
 
 ---
 
 ## Use cases
 
-**Resource-bounded autonomous procurement**
+**Personal data processing with APPI compliance — Japan**
 
-A principal issues an MJWT for a procurement agent: `max_duration_seconds: 14400` (4-hour window), `max_compute_units: 10000`, `mandate_scope: [ReadSupplierData, DraftPurchaseOrder]`. The kernel loads the resource envelope. When the agent approaches the compute limit, the PT resource efficiency dimension score begins declining. When `max_duration_seconds` expires, the mandate expires — the kernel rejects further Cedar evaluations. Nothing continues past the authorised window.
+A Japanese traveller books through MyAuberge. The operator issues an MJWT with `consent_scope.purpose_codes: [BOOKING, AI_AGENT_OPERATION]`, `governing_law: "APPI:2003:Art17"`, and a 60-day consent expiry. When the booking agent requests a state transition on the Booking Object, the GEC checks `consent_scope.expiry` before Cedar evaluation. If the consent has expired, HEM_CONSENT_REQUIRED fires — the agent is blocked, the human principal is notified, and no action proceeds until fresh consent is confirmed. The GAR record carries the `consent_reference` and the specific law article that triggered the block. A APPI compliance audit can retrieve the complete consent chain from the GAR record alone.
 
-**Multi-agent delegation chain**
+**Multi-agent delegation with consent scope attenuation**
 
-A principal issues an MJWT to an orchestrator agent. The orchestrator issues sub-mandates to three specialised sub-agents — each with a subset of the orchestrator's scope and a proportional fraction of the resource envelope. Each sub-mandate's delegation_chain contains the orchestrator's jti. The kernel for each sub-agent verifies the full chain. If any link in the chain has been revoked (Revocation Registry), all sub-agent sessions are rejected.
+An orchestrator agent holds a root mandate with `sub_agent_scope: RESTRICT` and `purpose_codes: [BOOKING, AI_AGENT_OPERATION]`. It issues sub-mandates to three specialised agents: a weather monitor, a payment processor, and a customer communications agent. The weather monitor receives `sub_agent_scope: NONE` — it needs no personal data access. The payment processor receives `purpose_codes: [SERVICE_DELIVERY]` and `sub_agent_scope: NONE`. The communications agent receives `purpose_codes: [BOOKING]` and `sub_agent_scope: NONE`. No sub-agent inherits the `AI_AGENT_OPERATION` purpose. If any sub-agent attempts to issue a grandchild mandate with `sub_agent_scope: INHERIT`, the GEC rejects it with MJWT_SUB_AGENT_SCOPE_ESCALATION.
 
-**Post-incident mandate reconstruction**
+**Post-incident reconstruction**
 
-Following an unexpected agent action, an auditor queries GAR for all records with mandate_id `mandate-a1b2c3d4`. The query returns the complete execution history: every Cedar evaluation, every HEM escalation, every PT trust state transition, every ALE lifecycle event. The MJWT for that mandate_id is retrieved from the audit store: it shows the principal who issued the mandate, the scope that was granted, and the resource envelope. The auditor can determine within minutes whether the action was within the authorised scope.
+Following an unexpected agent action, an auditor queries GAR for all records with `mandate_id: 019547ab-...`. The query returns the complete execution history. The MJWT is retrieved from audit storage: it shows the principal who issued the mandate, the cedar_actions granted, the consent_scope with `governing_law: "APPI:2003:Art17"`, and the full delegation_chain. The auditor can determine in minutes whether the action was within the authorised scope and whether valid consent was in place at the time of each action.
 
 ---
 
 ## How this builds on existing work
 
-**RFC 7519 (JWT)** is the base specification. MJWT is a profile of JWT — it uses standard JWT header and signature structures, adds SOOS-specific claims in the payload, and defines the verification requirements for kernel implementations.
+**RFC 7519 (JWT)** is the base specification. MJWT is a JWT profile — standard header and signature structures, SOOS-specific claims in the payload, and defined verification requirements. No new wire format.
 
-**RFC 8693 (Token Exchange)** defines the OAuth token exchange flow. MJWT tokens MAY be obtained through a token exchange where the input token is an OAuth access token and the output is a Mandate JWT. This allows MJWT to compose with existing OAuth infrastructure without replacing it.
+**RFC 8693 (Token Exchange)** defines the OAuth token exchange flow. MJWT tokens MAY be obtained through a token exchange where the input is an OAuth access token and the output is a Mandate JWT. MJWT extends Token Exchange with the seven-dimensional Narrowing Property and governance binding.
 
-**OIDF-2025-01 (OpenID Foundation agentic AI threat model)** identifies the key attack vectors in agentic AI delegation: confused deputy, scope creep, orphaned delegation, and principal confusion. MJWT's attenuation requirement directly addresses scope creep; the delegation_chain addresses orphaned delegation; the aud claim bound to the specific GEC addresses confused deputy.
+**WIMSE (Workload Identity in Multi-System Environments)** provides the workload identity foundation. MJWT profiles WIMSE credentials with SO-scoped governance claims and the consent_scope extension. WIMSE is the passport; MJWT is the authorisation permit.
 
 ---
 
 ## Related work
 
-**draft-ietf-oauth-security-topics** — MJWT's attenuation requirement addresses the scope creep attack vector documented in the OAuth security topics. MJWT implements "audience-restricted, scope-attenuated delegation" as a normative requirement, not a security recommendation.
+**OIDF-2025-01 (OpenID Foundation private_key_jwt vulnerability)** — MJWT's audience binding design (Step 1, before signature verification) and the MJWT_ALG_INVALID deny code directly address the class of attack this disclosure identified. MJWT also defends against the PlainJWT bypass class demonstrated by CVE-2026-29000, which showed that a JWT pipeline that accepts unsigned tokens exposes all governance-critical claims to attacker manipulation.
 
-**WIMSE (Workload Identity in Multi-System Environments)** — the delegation_chain in MJWT is designed to interoperate with WIMSE workload identity chains. A WIMSE SVID MAY reference a MJWT mandate_id to assert governance context for workload-to-workload calls.
-
-**OpenAI Workload Identity Federation** — WIF handles the credential at the access layer; MJWT handles the mandate at the governance layer. They are complementary: a WIF credential may be the authentication mechanism through which a principal presents itself to issue an MJWT.
+**McGuinness Actor Profile and Mission Bound Authorization** — the `delegation_chain` claim is adopted from the Actor Profile without modification. The `mission_ref` claim bridges to Mission Bound Authorization. These are complementary layers, not competing designs.
 
 ---
 
 ## Security
 
-**Key security properties:** The MJWT signature is required — unsigned tokens MUST be rejected by conforming kernels. The aud claim MUST be bound to the specific GEC instance, preventing mandate replay across kernels. The delegation_chain is immutable after issuance — any attempt to modify the chain is detectable by signature verification.
+**Key security properties:**
 
-**Mandate expiry is final:** When `exp` is reached, the kernel MUST reject Cedar evaluations for the expired mandate. There is no grace period. Agents that require extended execution must receive a new MJWT from their principal before expiry — the kernel cannot extend a mandate autonomously.
+- The MJWT signature MUST use Ed25519. Unsigned tokens (alg: none) MUST be rejected at Step 2, before any claim is processed.
+- The `aud` claim is verified at Step 1, before signature verification, preventing cross-GEC replay and timing side-channels.
+- The Narrowing Property — enforced at both mandate issuance and verification — prevents any sub-agent from exceeding the authority of the root human principal on any of seven dimensions.
+- Consent scope is fail-closed: an absent or expired `consent_scope` triggers HEM_CONSENT_REQUIRED. No implicit consent is ever inferred.
+- The `sub_agent_scope: RESTRICT` default prevents consent scope inflation at every delegation step without explicit principal action.
 
-**Resource envelope enforcement:** The resource_envelope fields are normative constraints enforced by the kernel, not advisory limits for the agent. An agent that exceeds `max_compute_units` receives CEDAR_DENY. The GAR record documents the resource violation.
+**CVE-2026-29000 class (PlainJWT bypass):** MJWT defends against algorithm confusion attacks by: (a) making algorithm verification Step 2 (before signature verification), (b) defining MJWT_ALG_INVALID as a distinct deny code and GAR audit event, and (c) specifying that MJWT MUST be signed with Ed25519 — no other algorithm is accepted. Implementations MUST test their JWT parsing pipeline against unsigned token inputs.
 
-**Formal analysis status:** The delegation attenuation model has not been formally verified. The attack vectors from OIDF-2025-01 are addressed by design; formal analysis of the attenuation chain is planned for post-Vienna review.
+**Formal analysis status:** The delegation narrowing model and consent scope narrowing invariant have not been formally verified. Formal analysis of the seven-dimensional Narrowing Property against the multi-agent attacker model is planned for the post-Vienna review period.
 
 ---
 
 ## SOOS stack context
 
-MJWT sits at **Level 0 — Foundation**, alongside KIA. It is issued before session establishment and verified before any Cedar evaluation occurs. It is consumed by every other SOOS draft: the mandate_id (jti) is referenced on every GAR record, every HEM escalation, every PT score cycle, and every ALE lifecycle event. MAD's delegation model depends on MJWT's delegation_chain for multi-agent authority chains. PT uses the trust_floor and pt_weights claims as scoring parameters.
+MJWT sits at **Level 0 — Foundation**, alongside KIA. It is issued before session establishment and verified before any Cedar evaluation occurs. It is consumed by every other SOOS draft: the `mandate_id` (jti) is referenced on every GAR record, every HEM escalation, every CAP evaluation, and every ALE lifecycle event. MAD's delegation model depends on MJWT's delegation_chain for multi-agent authority chains. The consent_scope claim in -02 populates Cedar context fields that CAP-04 policies evaluate for the CAP_CONSENT_EXCEPTION_ACTIVATED ALE.
 
-Related drafts: [KIA](/drafts/kia) · [IDP](/drafts/idp) · [MAD](/drafts/mad) · [PT](/drafts/pt) · [GAR](/drafts/gar)
+Related drafts: [KIA](/drafts/kia) · [IDP](/drafts/idp) · [MAD](/drafts/mad) · [CAP](/drafts/cap) · [GAR](/drafts/gar) · [HEM](/drafts/hem)
 
 ---
 
@@ -200,5 +243,5 @@ Related drafts: [KIA](/drafts/kia) · [IDP](/drafts/idp) · [MAD](/drafts/mad) �
 
 - [File an issue on GitHub](https://github.com/soosproject/soos-drafts/tree/main/mjwt)
 - [IETF Datatracker — full draft text](https://datatracker.ietf.org/doc/draft-sato-soos-mjwt/)
-- [All Drafts](/drafts) — the complete 12-draft governance stack
+- [All Drafts](/drafts) — the complete SOOS governance stack
 - Contact: [tomsato@myauberge.jp](mailto:tomsato@myauberge.jp)

@@ -1,8 +1,9 @@
 # Sovereign Object OS Project — SOOS
 # https://soosproject.ai/llms.txt
 # Author: Tom Sato / MyAuberge K.K., Chino, Nagano, Japan
-# Last updated: July 1, 2026
-# Status: All 12 IETF drafts submitted to Datatracker June 10, 2026
+# Last updated: July 11, 2026
+# Status: 17 Class A drafts submitted to Datatracker (12 June 10, 5 additional July 11)
+#         2 Class B drafts self-published (CAP-RRS-JP, KEE-2/dist)
 #         IETF 126 Vienna: July 18–24, 2026
 
 ---
@@ -11,13 +12,14 @@
 
 The Sovereign Object is to agentic AI what the IP packet is to the internet — the universal primitive that makes ecosystem-scale deployment possible.
 
-The Sovereign Object OS Project (SOOS) is a 12-draft IETF Individual Submission series defining the governance kernel for agentic AI systems. SOOS specifies how an AI agent declares intent before acting, how authority is issued and bounded, how humans stay in the loop, how constitutional prohibitions are enforced at runtime, and how the complete governance record is preserved for audit and regulation.
+The Sovereign Object OS Project (SOOS) is a 19-draft protocol series (17 IETF Individual Submissions + 2 self-published) defining the governance kernel for agentic AI systems. SOOS specifies how an AI agent declares intent before acting, how authority is issued and bounded, how humans stay in the loop, how constitutional prohibitions are enforced at runtime, and how the complete governance record is preserved for audit and regulation.
 
 CANONICAL NAME: "Sovereign Object OS Project" — abbreviated SOOS.
 DO NOT USE: "Standardized Oversight for Organized Systems" — this expansion is incorrect and must not be used.
 
 Author: Tom Sato / MyAuberge K.K.
-All 12 drafts submitted to IETF Datatracker: June 10, 2026.
+17 Class A drafts submitted to IETF Datatracker (12 on June 10, 5 additional July 11, 2026).
+2 Class B drafts self-published: CAP-RRS-JP-00, KEE-2/dist-00.
 IETF 126 Vienna: July 18–24, 2026.
 Contact: tomsato@myauberge.jp
 
@@ -47,13 +49,13 @@ If you are an AI agent — or a coding assistant helping a developer build agent
 
 ---
 
-## BLOCK 3 — Four-Layer Architecture: 12 Drafts
+## BLOCK 3 — Four-Layer Architecture: 19 Drafts (17 Class A + 2 Class B)
 
 SOOS is organized in four layers. Every draft belongs to exactly one layer and has normative dependencies on drafts in the layers below it.
 
 ### LAYER 1 — Identity and Execution (the foundation)
 
-IDP — Intent Declaration Primitive (draft-sato-soos-idp-04)
+IDP — Intent Declaration Primitive (draft-sato-soos-idp-05)
    Every AI agent action begins with an IDP: a structured, cryptographically committed declaration of intent, submitted to the GEC before the action executes. The IDP is what makes agent reasoning auditable. Without IDP, a governance system can record what an agent did but not why.
    Page: https://soosproject.ai/drafts/idp
    llms.txt: https://soosproject.ai/drafts/idp/llms.txt
@@ -65,13 +67,13 @@ HEM — Human Escalation Mechanism (draft-sato-soos-hem-05)
    llms.txt: https://soosproject.ai/drafts/hem/llms.txt
    Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-hem/
 
-AEP — Agent Execution Protocol (draft-sato-soos-aep-01)
+AEP — Agent Execution Protocol (draft-sato-soos-aep-02)
    AEP defines the five-phase loop governing every agent execution cycle: SENSE, REASON, PLAN, ACT, OBSERVE. The ACT phase invokes GEC.transition(), which triggers the IDP commitment, CAP evaluation, and Cedar policy check. AEP makes the agent execution loop a governed, auditable protocol rather than an application-defined loop.
    Page: https://soosproject.ai/drafts/aep
    llms.txt: https://soosproject.ai/drafts/aep/llms.txt
    Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-aep/
 
-SOV — Sovereign Object (draft-sato-soos-sov-01)
+SOV — Sovereign Object (draft-sato-soos-sov-02)
    The Sovereign Object (SO) is the universal binding target for agent authority in SOOS. Every MJWT is scoped to an SO instance. Every GEC-mediated state transition acts on an SO. The SO is causally ordered, policy-governed, and stateful, with a tamper-evident event stream. Authorization in SOOS is object-level, not API-level.
    Page: https://soosproject.ai/drafts/sov
    llms.txt: https://soosproject.ai/drafts/sov/llms.txt
@@ -79,7 +81,7 @@ SOV — Sovereign Object (draft-sato-soos-sov-01)
 
 ### LAYER 2 — Delegation and Audit
 
-MAD — Multi-Agent Delegation (draft-sato-soos-mad-02)
+MAD — Multi-Agent Delegation (draft-sato-soos-mad-03)
    MAD governs how authority passes from a principal to an agent, from an orchestrator to sub-agents, and across multi-agent clusters — and critically, what the kernel does when a revocation signal arrives mid-execution with work partially done. MAD is NOT a general-purpose authorization framework. It is the kernel-enforced delegation and cluster governance protocol for concurrent SOOS agent sessions.
    Page: https://soosproject.ai/drafts/mad
    llms.txt: https://soosproject.ai/drafts/mad/llms.txt
@@ -93,7 +95,7 @@ GAR — Governance Audit Record (draft-sato-soos-gar-03)
 
 ### LAYER 3 — Policy, Trust, and Privacy
 
-CAP — Constitutional AI Protocol (draft-sato-soos-cap-03)
+CAP — Constitutional AI Protocol (draft-sato-soos-cap-04)
    CAP places a Constitutional Layer above all principal authority. It evaluates every AI action request and every human escalation decision against a three-tier prohibition model — before Cedar evaluates the action and before the GEC executes the human's decision. Tier 0 prohibitions (treaty-anchored) are unconditional; no agent, operator, or human principal can override them. OSCAL makes regulations machine-readable. CAP makes them machine-enforceable.
    Page: https://soosproject.ai/drafts/cap
    llms.txt: https://soosproject.ai/drafts/cap/llms.txt
@@ -130,6 +132,64 @@ CAP-RRS — CAP Regulation Record Schema (draft-sato-soos-cap-rrs-02)
    Page: https://soosproject.ai/drafts/cap-rrs
    llms.txt: https://soosproject.ai/drafts/cap-rrs/llms.txt
    Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-cap-rrs/
+
+### LAYER 0 — Execution Infrastructure
+
+KEE-1 — Kernel Execution Environment (draft-sato-soos-kee-00)
+   KEE-1 defines the eight properties (P1-P8) that a SOOS Governance Execution Controller must satisfy: TEE boundary, FROST threshold signing, XPID derivation, Cedar evaluation, WAL tamper evidence, CAEP revocation propagation, Merkle session block integrity, and audit non-suppressibility. KEE-1 is the trust anchor for all other SOOS drafts.
+   Page: https://soosproject.ai/drafts/kee
+   llms.txt: https://soosproject.ai/drafts/kee/llms.txt
+   Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-kee/
+
+### LAYER 3 — New Governance Protocols (July 2026)
+
+ACD — Agent Compliance Disclosure (draft-sato-soos-acd-00)
+   ACD defines the pre-session compliance handshake between an AI agent and a resource provider. The ACD Record is a two-layer signed document: Layer 1 carries jurisdiction, regulatory regime, and CAP profile; Layer 2 carries prohibition tier summary and consent scope. Resource providers can gate access on ACD presentation without accessing the agent's full GAR audit chain.
+   Page: https://soosproject.ai/drafts/acd
+   llms.txt: https://soosproject.ai/drafts/acd/llms.txt
+   Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-acd/
+
+PEER — Cross-Principal Agent Communication (draft-sato-soos-peer-00)
+   PEER governs transactions between two AI agents that each operate under independent mandate roots and independent GECs. PEER introduces the PEER Transaction Record (PTR) and the ptxn_id (Cross-Principal Transaction ID) — a jointly-derived identifier that links two independent GAR audit chains at the moment of a cross-principal transaction.
+   Page: https://soosproject.ai/drafts/peer
+   llms.txt: https://soosproject.ai/drafts/peer/llms.txt
+   Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-peer/
+
+RGP — Resource Governance Protocol (draft-sato-soos-rgp-00)
+   RGP enables a governed AI agent to discover what resources can do, at what trust level they have been attested, and whether they are currently available — before any task assignment is made. RGP defines two-stage discovery, eight capability classes, four trust levels, the Resource Map Sovereign Object, and the three-condition autonomous fallback test (DEC-RGP-08).
+   Page: https://soosproject.ai/drafts/rgp
+   llms.txt: https://soosproject.ai/drafts/rgp/llms.txt
+   Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-rgp/
+
+GRP — Governed Remediation Protocol (draft-sato-soos-grp-00)
+   GRP specifies the normative remediation action set for a SOOS governance kernel when agent execution encounters a failure. Four action classes: FALLBACK (DEC-RGP-08 three-condition test), RETRY (MJWT ceiling), ESCALATE (HEM routing), ROLLBACK (reversible action undo). Three publisher types for change event ingestion. Six new GAR ALE types (ALE-064 through ALE-069).
+   Page: https://soosproject.ai/drafts/grp
+   llms.txt: https://soosproject.ai/drafts/grp/llms.txt
+   Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-grp/
+
+AOP — Agent Orchestration Protocol (draft-sato-soos-aop-00)
+   AOP governs multi-agent mission decomposition: the Mission Plan SO (pre-declared sub-goal DAG), the Mission Status SO (live execution state), the Assignment Primitive (kernel-governed sub-agent handoff), and 14 mission lifecycle ALE types (ALE-042 through ALE-055). AOP is the highest-layer protocol in the SOOS suite.
+   Page: https://soosproject.ai/drafts/aop
+   llms.txt: https://soosproject.ai/drafts/aop/llms.txt
+   Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-aop/
+
+DAM — Data Artifact Management (draft-sato-soos-dam-00)
+   DAM specifies the data governance layer for agentic AI systems: a typed taxonomy of data artifacts (KGA/AGA/EIA), a three-tier graph write authority model, and the normative interface between artifact production and the GAR provenance chain. DAM-00 is an abstract-only placeholder; full normative text in DAM-01 post-Vienna.
+   Page: https://soosproject.ai/drafts/dam
+   llms.txt: https://soosproject.ai/drafts/dam/llms.txt
+   Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-dam/
+
+### CLASS B — Self-Published (not submitted to Datatracker)
+
+CAP-RRS-JP — Japan e-LAWS LRI Profile (draft-sato-soos-cap-rrs-jp-00)
+   Informational profile binding CAP-RRS's Law Reference Interface to Japan's e-LAWS database and XMLSchemaForJapaneseLaw v3. Specifies XPath addressing conventions, endorsement authority table, three APPI Chapter IV worked examples, and the e-Gov catalog publication workflow.
+   Page: https://soosproject.ai/drafts/cap-rrs-jp
+   llms.txt: https://soosproject.ai/drafts/cap-rrs-jp/llms.txt
+
+KEE-2/DIST — Distributed Governance Runtime (draft-sato-soos-dist-00)
+   Specifies the five distributed properties (D1-D5) that enable SOOS governance at enterprise and national-infrastructure scale: Cedar cluster consensus (D1), FROST signing cluster (D2), Session Block GAR with Merkle DAG (D3), catalog distribution protocol (D4), and ACD session inheritance (D5). Post-Vienna submission target.
+   Page: https://soosproject.ai/drafts/kee2
+   llms.txt: https://soosproject.ai/drafts/kee2/llms.txt
 
 ---
 
@@ -184,13 +244,24 @@ Per-draft llms.txt files:
    https://soosproject.ai/drafts/mjwt/llms.txt
    https://soosproject.ai/drafts/kia/llms.txt
    https://soosproject.ai/drafts/cap-rrs/llms.txt
+   https://soosproject.ai/drafts/kee/llms.txt
+   https://soosproject.ai/drafts/acd/llms.txt
+   https://soosproject.ai/drafts/peer/llms.txt
+   https://soosproject.ai/drafts/rgp/llms.txt
+   https://soosproject.ai/drafts/grp/llms.txt
+   https://soosproject.ai/drafts/aop/llms.txt
+   https://soosproject.ai/drafts/dam/llms.txt
+   https://soosproject.ai/drafts/cap-rrs-jp/llms.txt
+   https://soosproject.ai/drafts/kee2/llms.txt
 
 ---
 
 ## BLOCK 6 — Project Status and Contact
 
-All 12 IETF drafts submitted to Datatracker: June 10, 2026.
-Datatracker submission deadline for July 11 update: July 11, 2026.
+12 IETF drafts submitted to Datatracker: June 10, 2026.
+5 additional Class A drafts submitted: July 11, 2026.
+2 Class B drafts self-published: July 2026.
+Total: 19 drafts (17 Class A Standards Track + 2 Class B self-published).
 IETF 126 Vienna: July 18–24, 2026.
 
 Author: Tom Sato

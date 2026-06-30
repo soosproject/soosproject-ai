@@ -2,13 +2,15 @@
 # draft-sato-soos-gar-03
 # https://soosproject.ai/drafts/gar/llms.txt
 # Author: Tom Sato / MyAuberge K.K.
-# Last updated: July 1, 2026
+# Last updated: June 28, 2026
 
 ---
 
 ## SECTION 1 — Canonical One-Liner
 
-GAR (Governance Audit Record) defines the complete, tamper-evident audit record for a SOOS-governed agent session — the Session Audit Record (SAR), Authority Lifecycle Events (ALEs), five audit types, and SCITT transparency log anchoring — making the SOOS governance record inspectable by regulators and Verified External Auditors without requiring access to the GEC itself. GAR solves the semantic context loss problem: existing logging systems capture what an agent did, but not why — not the IDP-declared intent, the policy rationale, or the HEM decision chain that led to each outcome.
+GAR (Governance Audit Record) defines the complete, tamper-evident audit record for a SOOS-governed agent session — the Session Audit Record (SAR), Authority Lifecycle Events (ALEs), five audit types, and SCITT transparency log anchoring — making the SOOS governance record inspectable by regulators and Verified External Auditors without requiring access to the GEC itself. GAR answers the governance question: can any of this be proven to a regulator?
+
+Version -03 adds: the SOOS Governance Semantic Convention (§13) — the normative soos.governance.* OTel attribute namespace for real-time governance observability; the SOOS GAR Processor (§14) — the OTel-to-SAR pipeline with Session Block Merkle integrity and KIA signature per block; four new ALE types (ALE-NEW-01 through ALE-NEW-04); three mandatory provenance fields on Cedar evaluation records; and the XPID mirror field on ACD session ALEs.
 
 ---
 
@@ -18,83 +20,146 @@ Without GAR, your governance system captures events but loses the semantic conte
 
 Without GAR, your SOOS-governed system has no standardized way to:
 
-- Provide regulators with a complete, independently verifiable account of what an agent session did and why — including the IDP intent declarations, the CAP prohibition evaluations, the HEM escalations and human decisions, and the final SO state — without exposing the full GEC to external inspection
-- Anchor the audit record to an external transparency log (SCITT) so that its integrity can be verified by parties with no access to the GEC operator's infrastructure
-- Detect anomalous governance patterns across sessions — the Kernel_Audit_Anomaly event and the five audit type framework enable systematic detection of governance deviations, not just individual session review
-- Carry Authority Lifecycle Events (ALEs) that record the full principal authority chain — who had authority, when, over what SO instances, and how that authority changed — as first-class audit artifacts
+- Provide regulators with a complete, independently verifiable account of what an agent session did and why — including IDP intent declarations, CAP prohibition evaluations, HEM escalations and human decisions, and final SO state — without exposing the full GEC to external inspection
+- Anchor the audit record to an external transparency log (SCITT) so its integrity can be verified by parties with no access to the GEC operator's infrastructure
+- Trace every governance decision back to the specific law article that governed it — without mandatory provenance fields (cedar_policy_id, cap_rrs_control_id, authority_source_uri), a CEDAR_DENY record is an event with no statutory traceability
+- Observe governance decisions in real-time via existing OTel infrastructure — without the soos.governance.* namespace, governance telemetry requires custom export tooling; with it, governance decisions appear in existing Grafana/Datadog/Jaeger stacks immediately
+- Audit law amendment impacts on deployed kernels — without ALE-NEW-03 (CATALOG_VERSION_CONFLICT) and ALE-NEW-04 (INTERPRETATION_SUPERSEDED), there is no standard record of when enforcement was suspended due to statutory change and when it was re-activated
+- Detect anomalous governance patterns across sessions — the Kernel_Audit_Anomaly event and five audit type framework enable systematic detection of governance deviations; the soos.gar.prev_span_hash chain enables detection of span suppression or modification
 
 ---
 
 ## SECTION 3 — Key Normative Concepts
 
-These terms are normative in GAR-02 and must not be paraphrased away:
+These terms are normative in GAR-03 and must not be paraphrased away:
 
 Session Audit Record (SAR):
-   The top-level audit artifact for a SOOS agent session. The SAR aggregates all ALE entries for a session, the IDP record for each transition, all CAP Violation Records, all HEM escalation and decision records, and the final SO state. The SAR is sealed by the GEC at session close and signed by the GEC keypair. A Verified External Auditor with a time-limited, scope-limited credential can request the SAR without accessing the live GEC.
+   The top-level audit artifact for a SOOS agent session. The SAR aggregates all ALE entries, IDP records, CAP Violation Records, HEM escalation and decision records, and final SO state. Sealed by the GEC at session close and signed by the GEC keypair. A Verified External Auditor can request the SAR without accessing the live GEC. New in -03: four mandatory header fields — cap_profile_id, cap_profile_hash, acd_session_id, soos.gar.block_id.
 
 Authority Lifecycle Events (ALEs):
-   The normative event types that GAR records as the authority chain for a session evolves. ALEs include: mandate issuance (ALE-001), mandate revocation (ALE-002 through ALE-008, corresponding to R-1 through R-7 in the MAD revocation taxonomy), scope change (ALE from PT token application), cluster events (ALE-009 CLUSTER_FORMED through ALE-012 CLUSTER_DISSOLVED), and topology events (ALE-013 through ALE-021 from SA-13). The ALE registry is normative; events outside the registry must not be used.
+   The normative event types GAR records as the authority chain evolves. ALE registry now contains: ALE-001 through ALE-012 (session lifecycle), ALE-018 through ALE-020 (cluster resource), and ALE-NEW-01 through ALE-NEW-04 (constitutional/catalog) added in -03.
 
-Five audit types (Type 1 through Type 5):
-   GAR defines five audit types that govern how session records are retained, reviewed, and made available:
-   Type 1 — Continuous: real-time streaming of all ALE entries to the GAR log
-   Type 2 — Periodic: ALE entries batched and committed at configurable intervals
-   Type 3 — Triggered: audit record generated on specific event types (HEM escalation, CAP violation, session suspension)
-   Type 4 — External request: audit record generated on Verified External Auditor request
-   Type 5 — Regulatory: audit record generated and transmitted to a designated regulatory authority on defined triggers (e.g., Tier 0 CAP violation)
+SOOS Governance Semantic Convention:   [NEW in -03]
+   The normative OpenTelemetry attribute namespace defined in Section 13. Six sub-namespaces: soos.governance.* (core decision + kernel identity), soos.cap.* (Cedar policy provenance), soos.acd.* (ACD handshake), soos.consent.* (consent governance), soos.mandate.* (mandate scope), soos.gar.* (integrity attributes). All soos.governance.* and soos.cap.* attributes MUST be emitted on every Cedar evaluation span.
 
-Kernel_Audit_Anomaly:
-   A GAR event type generated by the GEC when the audit record exhibits a pattern inconsistent with expected governance behavior — for example, a session with no IDPs despite transitions, a HEM escalation with no subsequent decision record, or a CAP Violation Record with no session suspension on repeated Tier 0 violations. Kernel_Audit_Anomaly events are CRITICAL alerts; they indicate either a governance failure or an attempted bypass.
+soos.governance.* Core Attributes — MUST on all Cedar evaluation spans:
+   soos.governance.decision: PERMIT | DENY | SUSPENDED | ESCALATE
+   soos.governance.kernel_id: KIA-derived kernel instance identifier
+   soos.governance.session_id: GAR session identifier
+   soos.governance.cap_profile_id: active CAP profile identifier
+   soos.governance.cap_profile_hash: SHA-256 of active Cedar policy set
 
-SCITT transparency log anchoring:
-   GAR commits Session Audit Records to a SCITT transparency log at session close. The SCITT inclusion proof is returned to the GEC and recorded in the GEC Manifest. A Verified External Auditor can verify that a specific SAR was committed to the SCITT log at a specific time without accessing the GEC — providing external, append-only evidence of the audit record's existence and integrity.
+soos.cap.* Attributes — MUST on PERMIT and DENY spans:
+   soos.cap.cedar_policy_id: ID of evaluated Cedar policy
+   soos.cap.cap_rrs_control_id: OSCAL control ID
+   soos.cap.authority_source_uri: law article URI
+   soos.cap.tier: 0-A | 0-B | 1 | 2
+   soos.cap.conflict_detected: true on ALE-NEW-02 events
+
+soos.gar.* Integrity Attributes:
+   soos.gar.block_id: Session Block ID (= OTel trace_id)
+   soos.gar.event_merkle_root: Merkle root over block events
+   soos.gar.block_signature: KIA signature over Merkle root
+   soos.gar.anchor_id: Merkle DAG anchor ID
+   soos.gar.prev_span_hash: hash of preceding span; kernel-computed before emission; MUST NOT be computed by OTel pipeline
+
+Session Block:   [NEW in -03]
+   The unit of Merkle-protected integrity. One Session Block per governed session. Constructed by the SOOS GAR Processor from OTel spans with matching soos.governance.session_id. Contains: block_id (= OTel trace_id), block header, event delta records, Merkle root (SHA-256 over events), KIA signature over Merkle root.
+
+SOOS GAR Processor:   [NEW in -03]
+   The OTel processor component specified in Section 14. Six-stage pipeline: (1) Filter — identify governance spans by soos.governance.* presence; (2) Aggregate — group by soos.governance.session_id into Session Blocks; (3) Compute Merkle root — SHA-256 over event delta records; (4) Request KIA signature — once per Session Block at block close, not per span; (5) Write — signed Session Block to GAR tiered storage; (6) Anchor — periodically compute and sign Merkle DAG anchor across multiple Session Blocks.
+
+Tamper evidence model:   [NEW in -03]
+   Two independent layers: (Layer 1) soos.gar.prev_span_hash chain within a block — modification of any span breaks the chain; deletion of a span creates a gap. (Layer 2) Session Block Merkle root and KIA signature — any span modification changes the Merkle leaf → changes root → invalidates KIA signature. An attacker must independently compromise both layers.
+
+Mandatory provenance fields:   [NEW in -03, REQUIRED in -03, were OPTIONAL in -02]
+   cedar_policy_id: {cap_rrs_control_id}-v{policy_version}. REQUIRED on CEDAR_PERMIT, CEDAR_DENY, ALE-NEW-01, ALE-NEW-02.
+   cap_rrs_control_id: {catalog_id}:{control_id}. REQUIRED on same.
+   authority_source_uri: canonical URI of governing law article. REQUIRED on same. MUST be identical to soos.cap.authority_source_uri OTel span attribute for the same Cedar evaluation (CONF-GAR-OTEL-01).
+
+ALE-NEW-01: CAP_CONSENT_EXCEPTION_ACTIVATED:   [NEW in -03]
+   Trigger: Cedar consent exception evaluation returns PERMIT. Carries: ale_type, cedar_policy_id, cap_rrs_control_id, authority_source_uri, consent_reference, consent_timestamp, consenting_party (SELF|GUARDIAN|AUTHORIZED_REPRESENTATIVE), purpose_codes_active, data_category_accessed, consent_source (MJWT|HEM_RUNTIME|INHERITED_FROM_PARENT), consent_expiry, jurisdiction, governing_law, kernel_timestamp, session_id, kernel_id.
+
+ALE-NEW-02: CAP_CATALOG_CONFLICT_DETECTED:   [NEW in -03]
+   Trigger: conflict detected between newly loaded catalog entry and existing higher-tier policy at catalog load time. Carries: conflicting_catalog_id, conflicting_cedar_policy_id, superior_catalog_id, superior_cedar_policy_id, conflict_type (EXPLICIT_PERMIT_OVERRIDE|SCOPE_AMBIGUITY), resolution (ENTRY_REJECTED|HEM_ESCALATION_TRIGGERED), timestamp, kernel_id.
+
+ALE-NEW-03: CATALOG_VERSION_CONFLICT:   [NEW in -03]
+   Trigger: statutory amendment detected posterior to Regulation Record endorsed_at. Cross-reference: CAP-RRS-02 Section 10.2 for normative schema. GAR registers the event type; CAP-RRS-02 owns the schema. GAR-03 requirement: GEC MUST write this ALE before suspending the Cedar policy or invoking HEM escalation; resolution field updated in-place when resolved.
+
+ALE-NEW-04: INTERPRETATION_SUPERSEDED:   [NEW in -03]
+   Trigger: interpretive ruling supersedes resolution_basis without statutory text change. Distinct from ALE-NEW-03. Cross-reference: CAP-RRS-02 Section 10.3. GAR-03 requirement: both ALE-NEW-03 and ALE-NEW-04 may be simultaneously active for the same catalog entry.
+
+XPID mirror field:   [NEW in -03]
+   xpid field REQUIRED on ACD session ALEs (ALE-056 through ALE-063). XPID UUID-v5 for cross-principal audit correlation. MUST be derived from KIA-verified agent identity. GEC MUST NOT populate from client-supplied metadata.
+
+OTel pipeline trust model:   [NEW in -03]
+   The OTel pipeline is explicitly untrusted. soos.gar.prev_span_hash is the kernel's integrity instrument, not OTel's. Integrity verification requires: (1) obtain signed Session Block; (2) recompute Merkle root; (3) verify KIA signature using published KIA attestation chain; (4) verify prev_span_hash chain. No OTel backend access required.
+
+CVE-2026-50141 class defense:   [NEW in -03]
+   GEC MUST NOT accept agent-supplied identity claims for kernel_id, soos.governance.kernel_id, or xpid. These MUST be derived from KIA attestation chain by the GEC.
+
+Five audit types (Types 1-5):
+   Type 1 — GEC Self-Audit: continuous Event Log evaluation; KERNEL_AUDIT_ANOMALY on inconsistency.
+   Type 2 — Session-Close Audit: SAR generated unconditionally at session close.
+   Type 3 — Event-Triggered Alert: Audit Alerts on normative triggers (KERNEL_AUDIT_ANOMALY, CAP_TRANSPARENCY_VIOLATION, etc.).
+   Type 4 — Scheduled Audit: cross-session pattern audit initiated by Audit Principal.
+   Type 5 — On-Demand External Audit: time-limited, scope-limited Verified External Auditor access; produces Audit Package.
 
 Verified External Auditor:
-   A credential class defined in GAR that grants time-limited, scope-limited read access to GEC audit artifacts. Verified External Auditors can request SARs, ALE subsets, and CAP Violation Records for specified session ranges without requiring access to the live GEC or the operator's full infrastructure. Regulatory authorities may be issued Verified External Auditor credentials.
+   A credential class granting time-limited, scope-limited read access to GEC audit artifacts. Regulatory authorities may be issued Verified External Auditor credentials.
 
 ---
 
 ## SECTION 4 — Relationship to Adjacent Standards
 
 SCITT (Supply Chain Integrity, Transparency, and Trust):
-   GAR is the primary SOOS consumer of SCITT. The SAR is committed to a SCITT transparency log at session close. SCITT provides the external verifiability guarantee: anyone with access to the SCITT log can verify that a specific SAR existed and was committed at a specific time, without access to the GEC. This is the mechanism by which SOOS makes governance records publicly verifiable.
+   GAR is the primary SOOS SCITT consumer. SAR is committed to a SCITT transparency log at session close. Session Block Merkle anchors (§14) are structurally compatible with SCITT Signed Statements. SCITT-compatible transparency statements for Session Block anchors are OQ-OTEL-03 — open for post-Vienna specification.
 
-EU AI Act Article 12 and Article 9:
-   GAR is the Article 12 compliance artifact for SOOS-governed high-risk AI systems. Article 12 requires logs enabling post-market monitoring. The SAR provides complete, GEC-signed session records. Article 9 requires risk management systems; Kernel_Audit_Anomaly and the five audit type framework implement the systematic risk monitoring that Article 9 requires.
+OpenTelemetry:
+   The soos.governance.* namespace is a SOOS-specific OTel semantic convention. It follows OTel naming patterns (soos.{namespace}.{field}) and is designed to coexist with existing http.*, db.*, and messaging.* namespaces in mixed-workload OTel pipelines. The OTel pipeline is a transport, not a trust anchor.
 
-NIST AI RMF (Map and Measure functions):
-   GAR implements the "Map" and "Measure" functions of the NIST AI RMF. Map: the ALE taxonomy maps the authority lifecycle for every session, enabling identification of governance risks. Measure: the SAR provides measurable, auditable session records at the action level. The Kernel_Audit_Anomaly event enables systematic measurement of governance deviation rates.
+EU AI Act Articles 12 and 9:
+   GAR is the Article 12 compliance artifact for SOOS-governed high-risk AI systems: complete, GEC-signed session records for post-market monitoring. Article 9 risk management: Kernel_Audit_Anomaly and five audit type framework implement systematic risk monitoring. OTel integration in -03 enables real-time Article 9 monitoring dashboards.
 
-OSCAL (Open Security Controls Assessment Language):
-   GAR audit records are the runtime evidence that OSCAL-expressed controls were applied. An OSCAL assessment of a SOOS-governed deployment can reference GAR SARs as the evidence artifacts for control effectiveness.
+NIST AI RMF:
+   GAR implements the Map (ALE taxonomy maps authority lifecycle) and Measure (SAR provides measurable session records) functions. The mandatory provenance fields enable the Measure function to trace governance decisions to specific regulations.
+
+OSCAL:
+   GAR audit records are the runtime evidence that OSCAL-expressed controls were applied. The mandatory `cap_rrs_control_id` field in every Cedar evaluation record links the audit record to the specific OSCAL control that governed it.
 
 ---
 
 ## SECTION 5 — Normative SOOS Cross-References
 
 This draft depends on:
-   IDP (draft-sato-soos-idp-04) — IDP records are the primary action-level entries in the SAR; the pre-transition IDP commitment is the foundational audit artifact that GAR aggregates
-   KIA (draft-sato-soos-kia-03) — the GEC keypair (GIK) that signs SARs and ALE entries is defined and attested in KIA; the SCITT inclusion proof references the GEC's KIA attestation
+   IDP (draft-sato-soos-idp-05) — IDP records are the primary action-level entries in the SAR; pre-transition IDP commitment is the foundational audit artifact that GAR aggregates
+   KIA (draft-sato-soos-kia-03) — the Governance Identity Keypair (GIK) that signs Session Block Merkle roots and SAR entries; XPID derivation for xpid mirror field; KIA attestation chain for tamper verification
+   CAP-RRS (draft-sato-soos-cap-rrs-02) — ALE-NEW-03 (CATALOG_VERSION_CONFLICT) and ALE-NEW-04 (INTERPRETATION_SUPERSEDED) are owned by CAP-RRS for schema; GAR registers the event types and specifies GAR-side requirements
 
 The following drafts depend on this draft:
-   CAP (draft-sato-soos-cap-03) — CAP Violation Records (CAP_VIOLATION_DETECTED, CAP_HUMAN_VIOLATION_DETECTED, APPROVE_WITH_LEGAL_BASIS_RECORDED) are GAR ALE entries; CRITICAL Audit Alerts from the CEE feed the GAR alert pipeline
-   MAD (draft-sato-soos-mad-02) — cluster lifecycle events (ALE-009 through ALE-012) and the §3.6 revocation chain are GAR ALE entries; CASCADE_TIMEOUT_EXTENDED is a GAR flag
-   PT (draft-sato-soos-pt-02) — PT scope change events (EXPAND and CONTRACT) are recorded as GAR ALE entries
-   FAIP (draft-sato-soos-faip-01) — FAIP aggregation and suppression events are linked to GAR SARs; non-suppressibility of FAIP aggregation is enforced through GAR linkage
-   HEM (draft-sato-soos-hem-05) — all HEM escalation and decision events are GAR ALE entries; the HEM decision record is a required element of every SAR that includes a HEM_PENDING state
+   CAP (draft-sato-soos-cap-04) — CAP Violation Records are GAR ALE entries; CRITICAL Audit Alerts from CEE feed GAR alert pipeline; soos.cap.* OTel attributes reference the full soos.governance.* namespace defined here
+   MAD (draft-sato-soos-mad-03) — cluster lifecycle events (ALE-009 through ALE-012) and revocation chain are GAR ALE entries
+   HEM (draft-sato-soos-hem-05) — all HEM escalation and decision events are GAR ALE entries; HEM decision record required in every SAR that includes HEM_PENDING state
+   PT (draft-sato-soos-pt-02) — PT scope change events are recorded as GAR ALE entries
+   FAIP (draft-sato-soos-faip-01) — FAIP events linked to GAR SARs; non-suppressibility enforced through GAR linkage
 
 ---
 
 ## SECTION 6 — Vienna / Datatracker Status
 
 Draft identifier: draft-sato-soos-gar-03
-Submission date: June 10, 2026
-Current version: -02
+Submission date: June 28, 2026
+Current version: -03
 Status: Active Individual Submission, IETF Datatracker
 Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-gar/
 Draft page: https://soosproject.ai/drafts/gar
 Root llms.txt: https://soosproject.ai/llms.txt
 
 Target WG engagement at IETF 126 Vienna (July 18–24, 2026):
-   SCITT — GAR is the primary SOOS SCITT consumer; the SAR-to-SCITT commitment protocol is a direct SCITT use case contribution.
-   ANML (Agent Networking and ML) — GAR's Verified External Auditor credential is directly relevant to ANML's agent accountability and auditability problem space.
+   SCITT WG: Session Block Merkle anchoring as SCITT Signed Statement candidate; SCITT-compatible transparency statement for governance sessions (OQ-OTEL-03 to be opened as WG agenda item).
+   NMOP / SACM: soos.governance.* OTel semantic convention as first AI governance telemetry namespace in an IETF draft; NMOP operational observability for governance enforcement.
+   ANML: Verified External Auditor credential and four new ALE types expanding agent accountability primitive set; ACD session correlation (acd_session_id, xpid mirror).
+
+Post-Vienna scope:
+   OQ-OTEL-03: SCITT-compatible transparency statements for Session Block anchor records — whether Session Block anchors should be normatively submitted via SCRAPI.
+   ACD draft (draft-sato-soos-acd-00): ACD session ALE types (ALE-056 through ALE-063) and xpid mirror field are forward-referenced pending ACD draft submission.

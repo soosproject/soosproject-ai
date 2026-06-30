@@ -1,0 +1,157 @@
+# SOOS — Agent Orchestration Protocol (AOP)
+# draft-sato-soos-aop-00
+# https://soosproject.ai/drafts/aop/llms.txt
+# Author: Tom Sato / MyAuberge K.K.
+# Last updated: 2026-07-14
+
+---
+
+## SECTION 1 — Canonical One-Liner
+
+AOP (Agent Orchestration Protocol) is the highest-layer normative protocol in the SOOS governance stack. It governs multi-agent mission decomposition: the orchestrating agent's pre-commitment to mission outcomes (via Mission-Level EOD and Sub-Goal EODs), the kernel-enforced sub-goal DAG (Mission Plan SO), the governed sub-agent handoff (Assignment Primitive backed by a SACR), and the complete mission lifecycle audit record (ALE-042 through ALE-055 in GAR).
+
+AOP is NOT an agent framework. It is the governance overlay that makes an agent framework governable. AOP does not specify agent reasoning, inter-agent message encoding, or resource discovery (RGP handles discovery).
+
+Version -00 is the initial submission. It introduces all core constructs: EOD paths (E-EOD and PD-EOD), Mission Plan SO with SEQUENTIAL/PARALLEL/CONDITIONAL dependency types, Mission Status SO with AT_RISK detection, Assignment Primitive with 7-step issuance procedure, three re-planning authority levels (NONE/BOUNDED/AUTONOMOUS), 14 mission lifecycle ALE types, and the five-phase planning intelligence model integrating RETRY_PATTERN_LIBRARY.
+
+---
+
+## SECTION 2 — Problem Statement
+
+Without AOP: existing agent frameworks (LangGraph, CrewAI, AutoGen, OpenAI Swarms) can spawn sub-agents but provide no kernel-enforced scope narrowing, no pre-commitment record (EOD) at the mission or sub-goal level, no auditable mission lifecycle, and no governed re-planning authority model. When a multi-agent mission deviates — sub-agent exceeds scope, orchestrator re-plans without authorization, mission fails mid-execution — there is no governance record that lets an investigator reconstruct what was planned, what was authorized, and where the two diverged.
+
+The failure mode: a multi-agent system that is governed at the per-action level (via AEP/IDP/CAP) but ungoverned at the mission level can still produce ungoverned outcomes. AOP closes this gap.
+
+The analogy: AOP is to multi-agent orchestration what air traffic control is to aviation. ATC does not fly planes; AOP does not run agents. ATC assigns routes, manages separation, and escalates conflicts. AOP declares missions, governs spawning, tracks sub-goal state, detects AT_RISK before failures, and escalates re-planning decisions that exceed autonomous authority.
+
+---
+
+## SECTION 3 — Key Normative Concepts
+
+Mission:
+   A composite task assigned to an orchestrating agent requiring decomposition into sub-goals and delegation to sub-agents. Initiated by a MissionDeclaration. Tracked via Mission Plan SO for full lifecycle.
+
+MissionDeclaration:
+   Structured input from Mission Principal initiating an AOP mission. MUST carry: Mission Principal's identity (MJWT jti), root mandate reference, and either E-EOD or natural-language input for PD-EOD derivation.
+
+Mission Plan Sovereign Object (Mission Plan SO):
+   SOV-02 subtype encoding the sub-goal DAG. Created by GEC at Mission Open (ALE-042). Authoritative record of orchestrator's mission decomposition. GEC-signed; immutable except via gec.updateMissionPlan() which increments mission_plan_version. Version 1 is the original plan; later versions record re-planning changes.
+
+Mission Status Sovereign Object (Mission Status SO):
+   SOV-02 subtype encoding live execution state. Maintained exclusively by GEC. No agent may hold Cedar Action::WriteMissionStatus. Updated at each sub-goal state transition. Contains AT_RISK flags, active_replans, and sub_goal_states.
+
+Sub-Goal:
+   Bounded task within a mission assigned to a single sub-agent via Assignment Primitive. Has its own EOD, SACR, and AEP session. Composed into the sub-goal DAG.
+
+Sub-Goal DAG:
+   Directed acyclic graph of sub-goals in Mission Plan SO. Edges carry dependency_type: SEQUENTIAL | PARALLEL | CONDITIONAL. DAG is acyclic: sub-goal MUST NOT depend on itself or a descendant.
+
+Assignment Primitive:
+   Governed handoff from orchestrating agent to sub-agent. MUST carry: sacr_id (committed SACR reference), sub_goal_id, mission_plan_id, endorsed_eod_id (Endorsed Sub-Goal EOD), ephemeral_kia_ref, replan_authority, hub_routing_id. GEC-signed; sub-agent MUST verify signature before proceeding (CONF-AOP-ASSIGN-01).
+
+Mission-Level EOD:
+   Pre-commitment structure for the full mission. Submitted before Mission Plan SO creation. MUST be Endorsed before GEC creates Mission Plan SO (CONF-AOP-EOD-01). Uses AEP-02 Section 6.2 EOD schema with AOP-specific constraints (CONF-AOP-EOD-01 through -05).
+
+Sub-Goal EOD:
+   Pre-commitment for a single sub-goal. MUST be submitted after SACR issuance (CONF-AOP-EOD-08). MUST include mission_context extension (mission_plan_so_id + sub_goal_id + parent_endorsed_eod_id). Scope MUST be within SACR scope_constraints (CONF-AOP-EOD-09/10).
+
+E-EOD (Explicit EOD):
+   Human-provided structured EOD. Required for CLASS_3 agents, sub-goals with financial commitment, irreversible state change, or unreviewed SPO Plan B. Requires explicit Mission Principal acknowledgment (EOD_ACKNOWLEDGED record) before GEC issues intake_endorsement (CONF-AOP-EOD-14).
+
+PD-EOD (Prompt-Derived EOD): [from IDP-05]
+   GEC-derived EOD from natural-language prompt. derived: true flag. Permitted for Mission-Level EOD and read-only sub-goals. NOT PERMITTED for sub-goals with write operations, AUTONOMOUS replan_authority, or financial commitment (CONF-AOP-EOD-12/13).
+
+AT_RISK:
+   Mission Status SO state flag set by GEC when sub-goal is at risk. Five trigger conditions: DEADLINE_EXCEEDED, STALLED, AGENT_DECLARED (sub-agent submitted GOAL_AT_RISK_DECLARED IDP), CASCADE, RESOURCE_EXHAUSTION. Emits ALE-048 with retry_pattern_suggestions from RETRY_PATTERN_LIBRARY.
+
+BOUNDED (replan_authority):
+   Permits: pre-declared Plan B activation (subject to Cedar eval of activation conditions + SPO hash check), agent substitution without scope change, timeline adjustment within declared bounds. Does NOT permit: new sub-goals, scope changes, primary_outcome changes.
+
+REPLAN_BOUNDED_ACTIVATED:
+   Outcome when BOUNDED re-plan is executed within pre-declared bounds. Produces ALE-052. Always preceded by ALE-051 with evaluation_outcome: PLAN_B_AVAILABLE.
+
+REPLAN_ESCALATED:
+   Outcome when re-planning exceeds agent's authority. Triggers HEM escalation. Produces ALE-053. GEC sets Mission Status SO overall_state: AWAITING_HEM and suspends SEQUENTIAL/CONDITIONAL successor SACRs.
+
+Standing Plan Object (SPO): [from SOV-02]
+   Pre-authorized Plan B structure (SOV-02 subtype). SPO content hash committed by GEC at intake_endorsement. GEC re-verifies hash at Plan B activation (CONF-AOP-SEC-10). Cedar evaluates Action::ActivateStandingPlan before execution.
+
+MISSION_OPEN (ALE-042):
+   First ALE in any mission GAR record. Carries mission_id, mission_plan_so_id, root_eod_id, mission_principal_xpid, orchestrator_xpid.
+
+MISSION_CLOSE (ALE-055):
+   Last ALE in any mission GAR record. Carries session_block_id, sub_goal_outcomes array (eod_outcome per sub-goal), overall_outcome. Preceded by complete Session Block with Merkle root (KEE-1 P7).
+
+CONDITIONAL dependency:
+   DAG edge with condition object. condition_type: GOAL_STATE | CEDAR_EVAL | HEM_RESOLVED. HEM_RESOLVED encodes mandatory human checkpoint: target sub-goal cannot be assigned until specified HEM escalation is resolved (CONF-AOP-DAG-04).
+
+mission_context (Sub-Goal EOD extension field): [NEW in AOP-00]
+   Object containing mission_plan_so_id, sub_goal_id, parent_endorsed_eod_id. Required in all Sub-Goal EODs. GEC verifies mission_plan_so_id and sub_goal_id resolve to committed Mission Plan SO node (CONF-AOP-EOD-11).
+
+CONF-AOP-AUDIT-01:
+   Every Assignment Primitive MUST carry a valid sacr_id referencing a committed SACR record. Assignment without committed SACR MUST be REJECTED.
+
+---
+
+## SECTION 4 — Relationship to Adjacent Standards
+
+EU AI Act Article 22 / Article 13: The AOP Session Block (ALE-042 through ALE-055, Merkle-signed) provides the automated decision-making audit trail required for multi-agent AI systems. The E-EOD acknowledgment flow satisfies the transparency obligation for consequential automated decisions.
+
+Emerging AI governance frameworks in multiple jurisdictions (AI Agent Operation): AOP's Mission Plan SO (pre-declared structure) and Mission Status SO (live execution state) directly address the traceability requirement for multi-agent AI systems identified in these frameworks.
+
+Emergency management recordkeeping frameworks: The MISSION_OPEN through MISSION_CLOSE ALE sequence provides the complete decision record required by disaster management regulatory frameworks in multiple jurisdictions.
+
+LangGraph / CrewAI / AutoGen / OpenAI Swarms: These frameworks provide agent orchestration without kernel-enforced scope narrowing, pre-commitment EOD structure, or audit-complete lifecycle records. AOP is the governance overlay that makes these frameworks compliant with SOOS governance requirements. AOP does not replace these frameworks.
+
+WIMSE WG: AOP's Assignment Primitive carries an ephemeral_kia_ref (GEC-issued session-scoped identity) for each sub-agent. This is the workload credential that WIMSE addresses. The SACR-to-Assignment chain is the provenance record for each workload credential issuance.
+
+SCITT (Supply Chain Integrity, Transparency, and Trust): The AOP Session Block is an ideal SCITT transparency log entry: a signed, Merkle-rooted artifact covering the complete lifecycle of a mission, auditable without access to the live system.
+
+---
+
+## SECTION 5 — Normative SOOS Cross-References
+
+This draft (AOP) depends on:
+- MAD (draft-sato-soos-mad-03): SACR schema (Section 4.2), 7-step issuance (Section 4.3), hub-only constraint (Section 5), R-1 through R-7 revocation trigger classes (Section 7). AOP uses MAD Section 4 for every Assignment Primitive.
+- AEP (draft-sato-soos-aep-02): EOD schema (Section 6.2), STALLED/PLAN_B_ACTIVE states, per-agent session lifecycle. Every sub-agent in an AOP mission runs its own AEP session.
+- IDP (draft-sato-soos-idp-05): intake_endorsement operation (Section 4.6), PD-EOD path (Section 4.7), mandate_reference field (Section 4.1), RETRY_CONTINUATION (Section 8).
+- GAR (draft-sato-soos-gar-03): ALE infrastructure, Session Block mechanism. ALE-042 through ALE-055 registered with GAR.
+- HEM (draft-sato-soos-hem-05): REPLAN_ESCALATED receiver. Produces ALE-054 (REPLAN_HEM_RESOLVED).
+- CAP (draft-sato-soos-cap-04): Cedar evaluation for DeclareMission, IssueChildMission, EvaluateEOD, ReplanMission, ActivateStandingPlan.
+- CAP-RRS (draft-sato-soos-cap-rrs-02): Cedar policy corpus governing AOP actions.
+- KEE-1 (draft-sato-soos-kee-00): P1-P8 execution environment properties; XPID derivation (Section 10) for sub-agent identity at SACR issuance; P7 WAL tamper evidence for Session Block Merkle root.
+- SOV (draft-sato-soos-sov-02): Mission Plan SO and Mission Status SO as SOV-02 subtypes; SPO as Plan B reference artifact.
+- MJWT (draft-sato-soos-mjwt-02): Root mandate referenced in EOD submitter_mjwt_id.
+- KIA (draft-sato-soos-kia-03): GEC keypair; ephemeral_kia_ref issuance.
+
+The following drafts depend on AOP:
+- None in the current SOOS draft suite. AOP is the highest-layer protocol.
+- FAIP (draft-sato-soos-faip-00) may reference AOP for federated multi-agent mission governance (informative, future revision).
+
+---
+
+## SECTION 6 — Vienna / Datatracker Status
+
+Draft identifier: draft-sato-soos-aop-00
+Submission date: July 2026 (pre-Vienna sprint)
+Version: -00 (initial submission)
+Datatracker URL: https://datatracker.ietf.org/doc/draft-sato-soos-aop/
+soosproject.ai page: https://soosproject.ai/drafts/aop
+
+Target WG engagements at IETF 126 Vienna (July 18-24, 2026):
+- WIMSE WG: Assignment Primitive ephemeral_kia_ref as workload identity credential; SACR provenance chain for credential issuance audit
+- SCITT: AOP Session Block as transparency log entry; Merkle-signed mission lifecycle artifact
+- SECDISPATCH: New work proposal if no existing WG claims AOP scope
+
+Open issues at submission:
+- OQ-AOP-01: Cedar action namespace coordination with CAP-RRS (pre-Vienna editorial; flagged for resolution before submission)
+- OQ-AOP-02: RESOLVED — Mission Plan SO versioning uses monotonically incrementing mission_plan_version; version 1 immutable in Event Stream
+- OQ-AOP-03: RESOLVED — Sub-Goal EOD endorsement after SACR (CONF-AOP-EOD-08); batch endorsement deferred post-Vienna
+
+Companion drafts at submission:
+- draft-sato-soos-mad-03 (dependency — SACR)
+- draft-sato-soos-aep-02 (dependency — per-agent session)
+- draft-sato-soos-idp-05 (dependency — EOD intake_endorsement)
+- draft-sato-soos-gar-03 (dependency — mission lifecycle ALEs)
+- draft-sato-soos-kee-00 (dependency — execution environment)
+- draft-sato-soos-acd-00 (peer — ACD Presentation Protocol for sub-agent identity verification)

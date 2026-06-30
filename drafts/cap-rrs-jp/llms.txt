@@ -1,0 +1,230 @@
+# SOOS — Japan e-LAWS LRI Profile for CAP-RRS (CAP-RRS-JP)
+# draft-sato-soos-cap-rrs-jp-00
+# https://soosproject.ai/drafts/cap-rrs-jp/llms.txt
+# Author: Tom Sato / MyAuberge K.K.
+# Last updated: 2026-07-01
+
+---
+
+## SECTION 1 — Canonical One-Liner
+
+draft-sato-soos-cap-rrs-jp-00 is an informational LRI profile
+document for Japan's legal system. It profiles the Law Reference
+Interface (LRI) generic model defined in draft-sato-soos-cap-rrs-02
+Section 9, specifying: the binding from LRI generic fields to Japan's
+e-LAWS database and XMLSchemaForJapaneseLaw v3; XPath addressing
+conventions for Japanese legal provisions; the endorsement authority
+table mapping each e-LAWS LawType to the designated certifying
+authority; three APPI Chapter IV worked examples; the e-Gov catalog
+publication workflow with the Digital Agency and IPA; and the
+INTERPRETATION_SUPERSEDED treatment for Japan's interpretive
+instruments (Cabinet Orders, 解釈指針, 内閣法制局意見, court judgments).
+
+This document is NOT: a normative specification (all normative
+requirements are inherited from CAP-RRS-02); a general CAP-RRS
+document (it is Japan-specific only); a statement of Japan government
+policy (the endorsement authorities listed are proposed profile
+designations, not official government endorsements).
+
+The Japan LRI profile URI registered in this document:
+https://laws.e-gov.go.jp/lri/v1
+
+---
+
+## SECTION 2 — Problem Statement
+
+Japan's e-LAWS database makes statutory text machine-readable and
+structurally addressable via XMLSchemaForJapaneseLaw v3 and the
+法令API v2 (Digital Agency, March 2025). The gap the Digital Agency
+has not addressed: which provisions prohibit or permit AI agent
+actions, who certifies that a Cedar policy correctly encodes a
+provision, and what happens automatically when the statute is amended
+or an authoritative interpretation supersedes the endorsed reading.
+
+This gap is identified in the AI臨調 ディスカッションペーパー
+(Themes 21 and 22): 「自然言語の法文をコードへ変換する際の解釈確定
+権限の所在」 — who has authority to determine which code interpretation
+is authoritative when code and statute diverge?
+
+This document answers that question for Japan by binding the CAP-RRS
+LRI mechanism to Japan's actual legal infrastructure.
+
+The positioning:
+  法令のAXが作るのは「読める法律」です。
+  SOOSが作るのは「守られる法律」です。
+
+  (Law AX creates laws that can be read.
+   SOOS creates laws that are enforced.)
+
+---
+
+## SECTION 3 — Key Normative Concepts
+
+[JP:] Japan LRI Profile identifier:
+The string "https://laws.e-gov.go.jp/lri/v1" used as the `profile`
+field value in the `authority_source` block of any Regulation Record
+encoded under this profile.
+
+[JP:] law_id binding:
+The e-LAWS 法令ID for the law from which the Cedar policy's
+prohibition or obligation derives. A 15-character alphanumeric
+string. Example: "325AC0000000089" for APPI. Stable across
+amendments.
+
+[JP:] article_ref binding:
+A valid XPath 1.0 expression resolvable against the e-LAWS XML
+representation of the law, validated against
+XMLSchemaForJapaneseLaw_v3.xsd. @Num attributes MUST use Arabic
+numerals (e.g., @Num='17'), never Japanese numerals (十七).
+
+[JP:] version_identifier binding:
+The ISO8601 date of the most recent amendment to the law as of the
+date the Cedar policy was certified. Obtained from the
+`EnforcementDate` field of the most recent `AmendmentInfo` entry
+returned by the e-LAWS API.
+
+[JP:] amendment_detection_endpoint:
+https://laws.e-gov.go.jp/api/2/updatelawlists/{date}
+This is the e-LAWS API v2 endpoint for detecting new amendments.
+Polled at ≤24h cadence per CAP-RRS §11.1.
+
+[JP:] interpretation_endpoint (Provisional):
+https://clawed.soosproject.com/jp/interpretations/{law_id}/{article_ref}
+Provisional SOOS-operated registry ingesting 官報 instruments.
+Polled at ≤24h cadence for records where resolution_basis is
+`interpretive_ruling` or `internal_conflict_resolution`.
+Transition to Digital Agency-operated endpoint anticipated post-Vienna.
+
+[JP:] Endorsement Authority Table (from Section 5.1):
+  Constitution / Act / CabinetOrder → 内閣法制局
+    https://www.clb.go.jp/authority
+  MinisterialOrdinance → 所管省庁法令担当部局
+  Prefecture Ordinance (Misc) → 都道府県法務・法制担当部局
+  Municipal Rule (Misc) → 市区町村法務担当 + prefecture co-endorsement
+
+[JP:] Elevated authority rule (Section 5.2):
+When `resolution_basis` is `internal_conflict_resolution`,
+内閣法制局 endorsement is required regardless of LawType.
+
+[JP:] resolution_basis controlled vocabulary
+(from DR-CAPRRS-INTERP-02, Decision 2):
+  statute_clear — clear, unambiguous statutory provision
+  interpretive_ruling — resolution via external instrument;
+    requires `resolution_instrument_id`
+  internal_conflict_resolution — conflict within one statute;
+    requires 内閣法制局 endorsement regardless of LawType
+  cross_statute_coordination — coordination between statutes;
+    requires co_endorsement (quorum: all)
+
+[JP:] 信頼保護 (Trust Protection) safe harbor:
+Agent actions taken under a non-superseded endorsement at the time
+of action are protected from retroactive liability. The GAR record
+carries: `endorsed_at` of the then-current endorsement,
+`resolution_basis` and `resolution_instrument_id` of the then-
+authoritative interpretation, and `INTERPRETATION_SUPERSEDED.
+effective_date` of the later ruling. These three fields together
+constitute the machine-native 信頼保護 instrument.
+
+[JP:] Diet Amendment Cycle:
+Ordinary sessions close mid-June. RECOMMENDED: increase polling to
+every 6 hours in the 30-day window following close of ordinary
+session. Minimum floor remains 24h per CAP-RRS §11.1.
+
+---
+
+## SECTION 4 — Relationship to Adjacent Standards
+
+e-LAWS / 法令API v2 (Digital Agency): The primary data source for
+this profile. law_id = 法令ID; version_identifier = EnforcementDate
+of most recent amendment; amendment_detection_endpoint =
+updatelawlists/{date} API. No changes to Digital Agency systems
+required.
+
+XMLSchemaForJapaneseLaw v3: The XML schema against which article_ref
+XPath expressions are validated. Published by the Ministry of Internal
+Affairs. Defines structural hierarchy (Chapter, Article, Paragraph,
+Item); does not define semantics (Prohibition, Condition, Obligation).
+SOOS CAP-RRS provides the semantics layer.
+
+AI臨調 ディスカッションペーパー (Themes 21 and 22): This document
+directly addresses the 解釈確定権限 question in Theme 22 via the
+endorsement_claim JWT (authoritative code designation) and the
+INTERPRETATION_SUPERSEDED event (interpretive change notification).
+
+OSCAL: CAP-RRS is the first IETF draft to bridge OSCAL-formatted
+controls and the IETF enforcement layer. The Japan LRI profile
+parallels OSCAL jurisdiction profiles (NIST 800-53, ISO 27001 are
+OSCAL profiles; Japan e-LAWS is a CAP-RRS LRI profile).
+
+APPI (個人情報の保護に関する法律, 法令ID: 325AC0000000089):
+Three Chapter IV provisions are worked through in Section 6 as
+Regulation Record templates. APPI Article 17(1), Article 24 (名簿
+disaster exception), Article 24 (個別避難計画 consent asymmetry).
+
+---
+
+## SECTION 5 — Normative SOOS Cross-References
+
+This document profiles:
+  CAP-RRS-02 (draft-sato-soos-cap-rrs-02) — specifically §9 LRI
+    generic model, §10 Statute-Primacy Rule, §11 Operational
+    Requirements. All normative behavior inherited.
+
+This document informs:
+  CAP-04 (draft-sato-soos-cap-rrs-02's parent enforcement layer)
+    — Japan LRI records ultimately compile to CAP Tier 1 Cedar
+    policies enforced by CAP's GEC evaluation model
+  GAR-03 (draft-sato-soos-gar-03) — CATALOG_VERSION_CONFLICT and
+    INTERPRETATION_SUPERSEDED events are GAR ALE types; Japan
+    profile instances of these events carry Japan-specific fields
+  HEM-05 (draft-sato-soos-hem-05) — HEM escalation triggered on
+    CATALOG_VERSION_CONFLICT and INTERPRETATION_SUPERSEDED
+
+Parallel profiles (post-Vienna, not yet submitted):
+  EU ELI LRI profile (draft-sato-soos-cap-rrs-eu-00 — anticipated)
+  US USLM LRI profile (draft-sato-soos-cap-rrs-us-00 — anticipated)
+
+---
+
+## SECTION 6 — Vienna / Datatracker Status
+
+Draft identifier:   draft-sato-soos-cap-rrs-jp-00
+Intended status:    Informational
+Submission:         July 14–15, 2026 (ORDER 17 window)
+Version:            -00 (full Japan LRI profile)
+Datatracker URL:    https://datatracker.ietf.org/doc/
+                      draft-sato-soos-cap-rrs-jp/
+Web page:           https://soosproject.ai/drafts/cap-rrs-jp
+llms.txt:           https://soosproject.ai/drafts/cap-rrs-jp/llms.txt
+
+IETF 126 Vienna (July 18–24, 2026) engagement targets:
+  - This document is not expected to be presented at Vienna;
+    it supports the SOOS Government Track engagement
+  - The APPI Chapter IV worked examples and 防災 statutory
+    conflict cases in Appendix B are Vienna briefing material
+    for Honmaru-san (Cabinet Office) and Fukunaga-san
+
+Japan government track:
+  - Honmaru-san (Cabinet Office): document directly answers
+    AI臨調 Theme 22 questions; cite in Honmaru explainer report
+  - Digital Agency engagement (post-Vienna): propose
+    interpretation_endpoint as Digital Agency roadmap item
+    alongside e-LAWS API v3
+  - 内閣法制局 engagement (post-Vienna): JP-OQ-04
+    (内閣法制局意見 machine-queryability)
+  - 全国知事会 engagement (post-Vienna): JP-OQ-01
+    (standing endorsement model)
+  - 防災庁 engagement (pre-operations, autumn 2026):
+    Appendix B dual command authority case
+
+Open Japan profile questions:
+  JP-OQ-01: 都道府県知事代表 co-endorsement model
+  JP-OQ-02: 解釈指針 instrument_id citation format
+  JP-OQ-03: Provisional interpretation registry scope
+             (官報 only vs. including 通達)
+  JP-OQ-04: 内閣法制局意見 machine-queryability
+
+Sprint: SOOS_UpgradeSprint_v18, ORDER 17
+Predecessor DRs: DR-CAPRRS-INTERP-01 (June 24, 2026),
+                 DR-CAPRRS-INTERP-02 (June 25, 2026)
+Base document: draft-sato-soos-cap-rrs-02

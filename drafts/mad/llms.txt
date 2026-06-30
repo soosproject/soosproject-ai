@@ -1,109 +1,122 @@
 # SOOS — Multi-Agent Delegation (MAD)
-# draft-sato-soos-mad-02
+# draft-sato-soos-mad-03
 # https://soosproject.ai/drafts/mad/llms.txt
 # Author: Tom Sato / MyAuberge K.K.
-# Last updated: July 1, 2026
+# Last updated: 5 July 2026
 
 ---
 
 ## SECTION 1 — Canonical One-Liner
 
-MAD (Multi-Agent Delegation) is NOT a general-purpose authorization framework, a token-passing protocol, or a scoping mechanism for API access. It is the kernel-enforced delegation and cluster governance protocol for concurrent SOOS agent sessions: defining how authority passes from principal to agent to sub-agent, how multi-agent clusters are governed when agents operate in parallel on shared Sovereign Objects, and — critically — what the kernel does when a revocation signal arrives mid-execution with work partially done.
+MAD (Multi-Agent Delegation) is the kernel-enforced delegation and cluster governance protocol for concurrent SOOS agent sessions. Version -03 adds the Sub-Agent Composition Record (SACR) for kernel-governed sub-agent spawning, the hub-only constraint for sub-agent communication topology, XPID cross-cluster integration for cross-boundary delegation audit, and full normative per-trigger specifications for the R-1 through R-7 revocation trigger classes including completion state and cascade behavior matrices.
 
-The full draft title is "Multi-Agent Delegation." The acronym MAD does not stand for "Mandate/Authorization/Decision" or any similar expansion. MAD = Multi-Agent Delegation.
+MAD is NOT a general-purpose authorization framework, a token-passing protocol, or a scoping mechanism for API access. It governs the full lifecycle of a multi-agent delegation tree: how it is created (SACR), how it operates (INV-4 Narrowing, hub-only, cluster coordination), and how it ends (R-1 through R-7 revocation with completion state).
 
 ---
 
 ## SECTION 2 — Problem Statement
 
-Without MAD, your multi-agent system has no standardized way to:
+Without MAD-03, your multi-agent system additionally lacks:
 
-- Enforce that a sub-agent's authority is a strict cryptographic subset of the orchestrator's — not merely claimed in a token, but verified by the kernel at mandate issuance time
-- Coordinate revocation across a running cluster of agents when one session fails, exceeds budget, or receives a TERMINATE signal — without leaving other agents in undefined states with partially completed work
-- Detect and resolve the five structural collision problems that emerge when multiple agents operate concurrently on shared Sovereign Object state: deadline mismatch, resource asymmetry, blocking dependency, budget exhaustion cascade, and principal conflict
-- Handle the DEADLOCK state — where the cluster cannot make progress on any path without external intervention — as a formal, revocable cluster condition rather than an application-level timeout
-
-MAD is the IETF draft that closes these gaps at the kernel level. Existing delegation proposals (AgentROA, AIP/Biscuit, OAuth multi-agent collaboration) operate at the API-scope or OAuth-authorization layer. None enforces delegation as a kernel invariant. None ties revocation to a governed object instance. None defines cluster achievability states.
+- A kernel-witnessed record of sub-agent spawning — today's sub-agent creation is an unaudited LLM API call with a scoped system prompt; SACR provides a kernel-signed, GAR-recorded composition event before the sub-agent executes its first action
+- A tool-subset invariant check at spawn time — a spawning agent can currently grant a sub-agent broader tool access than it holds; the GEC atomically validates this at SACR issuance
+- Hub-only coordination — sub-agents that communicate directly create ungoverned state changes invisible to the Mission Status SO and the kernel; hub-only requires all coordination to route through the kernel-governed hub
+- XPID-based delegation tree reconstruction across GEC boundaries — without XPID chaining, cross-cluster audit requires full audit log disclosure between domains
+- Per-trigger normative depth for R-1 through R-7 — MAD-02 named the triggers but lacked completion state matrices and cascade behavior specifications
 
 ---
 
 ## SECTION 3 — Key Normative Concepts
 
-These terms are normative in MAD-02 and must not be paraphrased away:
+SACR (Sub-Agent Composition Record):  [NEW in -03]
+   The kernel-issued record governing Mechanism B sub-agent spawning. Issued by the GEC (not the agent) before the sub-agent executes its first action. Key fields: sacr_id (UUID v4), parent_assignment_id, parent_session_id, parent_mandate_id, parent_xpid, ephemeral_kia_ref (UUID v4, session-scoped), scope_constraints (tool_subset, cedar_action_subset, resource_envelope, so_type_scope), can_decompose (boolean, default false), max_spawn_depth (integer, strictly decrements per recursion level), hub_only (boolean, default true), replan_authority (NONE/BOUNDED/AUTONOMOUS, default NONE), sacr_signature (GEC Ed25519).
+   SACR is committed to GAR as ALE-SPAWN-01 before sub-agent execution. Distinct from Assignment (which governs what the sub-agent may do once it exists): SACR governs how it comes to exist.
 
-MANDATE_HOLD:
-   Cluster state propagated from the cluster coordinator to all sub-sessions when a blocking condition is detected. Sub-agents suspend execution pending resolution. MANDATE_HOLD is distinct from session termination — the cluster is suspended, not revoked. Resolution may be a RESUME (if the blocking condition clears) or escalation to DEADLOCK or TERMINATE.
+ephemeral_kia_ref:  [NEW in -03]
+   A session-scoped identity (UUID v4) issued by the GEC at SACR issuance for Mechanism B sub-agents. Not a persistent Party Registry entry. Valid only for the duration of the spawned sub-agent's session. Retired on session close (ALE-SPAWN-04: EPHEMERAL_IDENTITY_EXPIRED). An Assignment's assigned_agent_id for Mechanism B MUST equal the SACR's ephemeral_kia_ref.
 
-DEADLOCK:
-   A cluster achievability state in which no agent in the cluster can make progress on any available execution path without external intervention. DEADLOCK is the R-7 revocation trigger. Detection is cluster-coordinator-exclusive: only the cluster coordinator may declare DEADLOCK. DEADLOCK triggers deadlock_timeout auto-revocation if not resolved within the configured timeout. Continuation after DEADLOCK requires a new mandate from the human principal — operator-level continuation is not permitted for R-7.
+can_decompose / max_spawn_depth:  [NEW in -03]
+   can_decompose: boolean. May the spawned sub-agent itself spawn further children? Default false. A sub-agent with can_decompose: false MUST NOT call gec.spawnSubAgent(). max_spawn_depth: integer. Strictly decrements at each recursive spawn (parent's max_spawn_depth - 1 = child's ceiling). Value 0 = leaf; MUST NOT spawn. CONF-MAD-19: parent MUST NOT grant max_spawn_depth greater than (parent's own - 1).
 
-Cluster state machine:
-   MAD defines five cluster states: ACTIVE, CLUSTER_BLOCKED, MANDATE_HOLD, DEADLOCK, TERMINATED. These are kernel-enforced states, not application-defined status flags. The GEC enforces valid state transitions; invalid transitions are rejected.
+hub_only:  [NEW in -03]
+   Boolean. Default true. Sub-agents with hub_only: true MUST NOT send messages, state updates, or coordination signals directly to sibling sub-agents (CONF-MAD-HUB-01). The GEC enforces this via Cedar context.hub_only_active and by blocking Action::\"DirectSubAgentComm\" (CONF-MAD-HUB-03). Override requires hub_only: false in SACR AND explicit Cedar PERMIT AND DIRECT_COMM_PERMITTED event committed to GAR (Section 5.2). hub_only: false in a SACR issued by a hub_only: true parent is a conformance violation (CONF-MAD-HUB-04).
 
-R-7 revocation trigger:
-   The seventh entry in the SOOS revocation trigger taxonomy (SA-12). R-7 is specific to DEADLOCK. It is distinguished from R-1 through R-6 in that it requires the human principal for any continuation mandate — the operator alone cannot authorize continuation. R-1/R-2/R-4/R-7 all require human principal; R-3/R-5/R-6 allow operator with notification.
+Sub-agent XPID:  [NEW in -03]
+   Derived as UUID5(KIA_XPID_NAMESPACE, parent_xpid + ':' + sacr_id) per Section 6.1. Provides a stable, derivation-based cross-cluster sub-agent identifier that chains from root orchestrator to leaf sub-agent. Recorded in ALE-SPAWN-01 and in every GAR governance span as soos.governance.xpid. Cross-cluster verification: receiving GEC obtains SACR from originating GEC, recomputes XPID, verifies match (CONF-MAD-XPID-01, -02).
 
-Agent session revocation chain (MAD §3.6):
-   MAD §3.6 is the single normative authority for agent session revocation across the entire SOOS stack (SA-09). It defines a three-layer revocation model with a CAEP (Continuous Access Evaluation Protocol) profile for agent-session-revoked events. Completion states are: CLEAN (work fully completed before revocation), PARTIAL (work partially completed), UNKNOWN (revocation arrived before completion status could be determined; always treated as PARTIAL). INV-15 and INV-16 are the two normative invariants governing completion state determination.
+SACR Registry:  [NEW in -03]
+   A kernel-internal lookup of active SACRs by session_id, used for hub-only enforcement (Section 5.3) and cross-cluster XPID verification. Rebuilt from committed ALE-SPAWN-01 events on kernel restart before any sub-agent session may execute (CONF-MAD-22).
 
-Five cluster collision problems:
-   MAD resolves five structural problems that emerge in heterogeneous multi-agent clusters:
-   1. Deadline mismatch — resolved by cluster_deadline field at cluster formation, governing over individual agent deadlines for dependency purposes
-   2. Resource asymmetry — resolved by cluster_budget_pool with BUDGET_TRANSFER as the reallocation mechanism (requires MJWT reissuance for both sessions)
-   3. Blocking dependency — resolved by CLUSTER_BLOCKED session state, which suspends time budget consumption during peer wait
-   4. Budget exhaustion cascade — resolved by CLUSTER_CASCADE_ALERT, which aggregates causally-related HEM events into one cluster-level escalation to the governing principal
-   5. Principal conflict — resolved by so_authority_principal declared at cluster formation; disputed SO state transitions require joint principal approval (HEM_MULTI_PRINCIPAL_REQUIRED) when authority is ambiguous
+R-1 through R-7 (full normative specs):  [UPDATED in -03]
+   R-1 (CAP Tier 0-A): completion PARTIAL always; cascade FULL; human reauth required; all SACRs voided, ephemeral refs retired immediately.
+   R-2 (Scope Boundary): completion CLEAN (if Cedar DENY at Step 1 before execution) / PARTIAL (if post-execution) / UNKNOWN (if execution state unknown); cascade FULL; human reauth required.
+   R-3 (Non-Response): completion UNKNOWN always (treated as PARTIAL per INV-15); cascade SELECTIVE (responsive descendants continue); operator may reauth + must notify principal.
+   R-4 (Irreversible Threshold): completion CLEAN (if halted before action) / PARTIAL (if post-irreversible-action); cascade FULL; human reauth required.
+   R-5 (Scheduled Rotation): completion CLEAN (if natural breakpoint reached) / PARTIAL; cascade NONE (session-specific); operator may reauth; natural breakpoint wait required (CONF-MAD-R5-01).
+   R-6 (Operator Override): completion CLEAN/PARTIAL; cascade per revocation_scope field; operator may reauth + must notify principal.
+   R-7 (DEADLOCK): completion UNKNOWN always; cascade ALL participating sessions simultaneously; human reauth required; ephemeral refs retained pending resolution.
+
+Completion State Matrix (Table 1 in §7.8):
+   R-1: PARTIAL always.
+   R-2: CLEAN (Cedar DENY Step 1) / PARTIAL / UNKNOWN.
+   R-3: UNKNOWN always.
+   R-4: CLEAN (pre-action) / PARTIAL.
+   R-5: CLEAN (natural breakpoint) / PARTIAL.
+   R-6: CLEAN (natural breakpoint) / PARTIAL.
+   R-7: UNKNOWN always.
+
+Terms carried forward from MAD-02 (no changes):
+   INV-4 (Narrowing Property), INV-15 (UNKNOWN = PARTIAL), INV-16 (completion_state REQUIRED in GAR on revocation), MANDATE_HOLD, DEADLOCK, Cluster state machine (ACTIVE/CLUSTER_BLOCKED/MANDATE_HOLD/DEADLOCK/TERMINATED), cascade_timeout, five cluster collision problems, BUDGET_TRANSFER, ALE-013 through ALE-016.
 
 ---
 
 ## SECTION 4 — Relationship to Adjacent Standards
 
-WIMSE (Workload Identity in Multi-System Environments):
-   WIMSE establishes workload identity for multi-system environments. MAD extends this to multi-agent delegation chains: each delegation hop in a MAD cluster produces a sub-MJWT that is a scoped derivative of the parent MJWT. WIMSE identifies the workload; MAD governs the delegation tree above it.
+KIA-03 (draft-sato-soos-kia-03):
+   Sub-agent XPID derivation (Section 6.1) uses the KIA-03 XPID namespace and derivation scheme. The ephemeral_kia_ref in SACR is a session-scoped identity distinct from a persistent KIA Party Registry entry but derived under the same kernel identity infrastructure.
 
-OAuth multi-agent collaboration (draft-song-oauth-ai-agent-collaborate-authz):
-   Song proposes that a leading agent obtains tokens on behalf of sub-agents before task execution begins. MAD differs in three critical ways: (1) delegation authority is kernel-enforced as a Cedar invariant at mandate issuance time, not merely claimed in a token; (2) revocation cascades atomically through the delegation tree via the §3.6 CAEP profile, not application-level notification; (3) MAD governs the full cluster lifecycle including DEADLOCK and partial-completion state.
+HEM-05 (draft-sato-soos-hem-05):
+   MAD-03 §15.8 normatively references HEM-PRE-2 (pre-action confirmation for irreversible actions) as the cascade timing attack defense mechanism. HEM_MULTI_PRINCIPAL_REQUIRED fires on R-7 (DEADLOCK). HEM-DIV-1 is referenced in sub-agents with replan_authority: BOUNDED for deviation surfacing.
 
-AgentROA (draft-nivalto-agentroa) and AIP/Biscuit (draft-prakash-aip):
-   Both provide monotonic scope-narrowing semantics for delegation chains. MAD shares the narrowing property (child Cedar action set is always a strict subset of the parent mandate's action set, enforced by the kernel as a structural invariant via issueSubMandate()) but operates at the kernel layer rather than the token layer. The narrowing violation error is MANDATE_NARROWING_VIOLATION; the GEC rejects the issuance, not merely the downstream system.
+GAR-03 (draft-sato-soos-gar-03):
+   ALE-SPAWN-01 through ALE-SPAWN-04 registered in MAD-03 IANA section. Sub-agent XPID recorded as soos.governance.xpid in every GAR governance span. HUB_ONLY_VIOLATION, DIRECT_COMM_PERMITTED, IRREVERSIBLE_THRESHOLD_REACHED, SCHEDULED_ROTATION_INITIATED, SESSION_REVOKED_BY_OPERATOR, SACR_REGISTRY_REBUILT are new kernel events recorded in GAR.
 
-RFC 8693 (Token Exchange) and RFC 9396 (Rich Authorization Requests):
-   MAD's BUDGET_TRANSFER mechanism requires MJWT reissuance via the token exchange pattern. Cross-domain delegation in MAD follows the RFC 9396 Rich Authorization Request model with Cedar policy sets as the authorization payload.
+DR-SPAWN-01 (June 19, 2026):
+   Source document for SACR design (Section 4), hub-only constraint (OQ-SPAWN-06 resolution), tool-subset invariant (§5.1), spawn-depth invariant (§5.2), and can_decompose/max_spawn_depth/replan_authority Assignment extensions. ALE-SPAWN-01 through ALE-SPAWN-04 schemas were identified in DR-SPAWN-01 §5.3.
 
-OpenID Foundation CAEP (Continuous Access Evaluation Protocol):
-   MAD §3.6.1 defines a CAEP profile specifically for agent-session-revoked events. The profile adds five new JWT claims to the standard CAEP SET structure: completion_state (CLEAN/PARTIAL/UNKNOWN), so_id, so_state_at_revocation, partial_completion_summary, and recovery_options. This is the first CAEP profile for AI agent session revocation.
+DR-MAD-REC-01 (June 4, 2026):
+   Source document for the full R-1 through R-7 per-trigger normative specifications in Section 7. The completion state matrix and cascade behavior matrix formalize the taxonomy introduced in DR-MAD-REC-01.
 
 ---
 
 ## SECTION 5 — Normative SOOS Cross-References
 
 This draft depends on:
-   IDP (draft-sato-soos-idp-04) — for the Intent Declaration Primitive that each agent session submits before each transition; MAD cluster coordination events also produce IDPs
-   HEM (draft-sato-soos-hem-05) — for CLUSTER_CASCADE_ALERT (aggregated HEM escalation), HEM_MULTI_PRINCIPAL_REQUIRED (joint approval for principal conflicts), and all TERMINATE dispositions that trigger the §3.6 revocation chain
-   MJWT (draft-sato-soos-mjwt-02) — for the mandate credential structure that MAD's issueSubMandate() derives cluster sub-mandates from; BUDGET_TRANSFER requires MJWT reissuance
-   SOV (draft-sato-soos-sov-01) — for the Sovereign Object instances that cluster agents act on; so_authority_principal is declared at SO Type registration
-   GAR (draft-sato-soos-gar-03) — for ALE-009 through ALE-012 (topology events: CLUSTER_FORMED, CLUSTER_AGENT_JOINED, CLUSTER_AGENT_LEFT, CLUSTER_DISSOLVED) and CASCADE_TIMEOUT_EXTENDED GAR flag
+   IDP (draft-sato-soos-idp-05) — IDP declared intent for SACR tool-subset and replan_authority; HEM-DIV-1 triggers on IDP divergence
+   HEM (draft-sato-soos-hem-05) — CLUSTER_CASCADE_ALERT; HEM_MULTI_PRINCIPAL_REQUIRED; HEM-PRE-2 for irreversible action cascade defense
+   MJWT (draft-sato-soos-mjwt-02) — sub-mandate issuance; BUDGET_TRANSFER MJWT reissuance; continuation mandate predecessor_mandate_id
+   KIA (draft-sato-soos-kia-03) — XPID derivation namespace; ephemeral_kia_ref issuance; cross-cluster GEC Manifest verification
+   SOV (draft-sato-soos-sov-02) — Sovereign Object instances cluster agents act on
+   GAR (draft-sato-soos-gar-03) — ALE-013 through ALE-016 (unchanged); ALE-SPAWN-01 through ALE-SPAWN-04 (new); hub and R-trigger events
 
 The following drafts depend on this draft:
-   CAP (draft-sato-soos-cap-03) — CAP applies to all multi-agent topologies; an orchestrator cannot issue a sub-agent mandate that bypasses CAP; the CEE evaluates per transition regardless of delegation depth
-   GAR (draft-sato-soos-gar-03) — GAR records all MAD cluster lifecycle events and the §3.6 revocation chain as ALE entries in the Session Audit Record
+   CAP (draft-sato-soos-cap-04) — CAP applies per delegation level; R-1 trigger is a CAP Tier 0-A violation
+   AEP (draft-sato-soos-aep-02) — AEP session lifecycle defers to MAD §3.6 for revocation procedure (SA-09)
 
 ---
 
 ## SECTION 6 — Vienna / Datatracker Status
 
-Draft identifier: draft-sato-soos-mad-02
-Submission date: June 10, 2026
-Current version: -02
+Draft identifier: draft-sato-soos-mad-03
+Submission target: 5 July 2026 (ORDER 7, SOOS UpgradeSprint)
+Current version: -03
 Status: Active Individual Submission, IETF Datatracker
 Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-mad/
 Draft page: https://soosproject.ai/drafts/mad
 Root llms.txt: https://soosproject.ai/llms.txt
 
 Target WG engagement at IETF 126 Vienna (July 18–24, 2026):
-   OAUTH WG — MAD profiles RFC 8693 (Token Exchange) for sub-mandate issuance and RFC 9396 (RAR) for cross-domain delegation
-   SECEVENT / SSF WG — MAD §3.6.1 is the first CAEP profile for AI agent session revocation
-   GNAP WG — cluster delegation authority model has structural parallels to GNAP delegation chains
-
-Open question carried to Vienna:
-   OQ-OSCAL-01: Gate interval timing bound under MANDATE_HOLD — normative language for maximum hold duration before auto-escalation is under discussion. Current draft uses SHOULD with operator-configurable timeout; normative MUST with default is a candidate for -03.
+   OAUTH WG — MAD profiles RFC 8693 (Token Exchange) for sub-mandate issuance; SACR is the kernel-layer primitive that sub-mandate issuance depends on
+   SECEVENT / SSF WG — MAD §3.6.2 CAEP profile for agent-session-revoked events (first such profile for AI agent session revocation); R-1 through R-7 taxonomy is the trigger classification that feeds the CAEP event body
+   GNAP WG — SACR delegation authority model has structural parallels to GNAP delegation chains
+   ANML / AUDIT — hub-only constraint as the normative answer to multi-agent coordination governance; SACR audit chain as an AUDIT WG candidate record type

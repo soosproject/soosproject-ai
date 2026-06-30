@@ -2,7 +2,7 @@ import { defineConfig } from 'vitepress'
 
 export default defineConfig({
   title: 'Sovereign Object OS Project',
-  description: '12 open protocols that make agentic AI reliable enough to deploy at enterprise scale. Better control means better software.',
+  description: '19 open protocols that make agentic AI reliable enough to deploy at enterprise scale. Better control means better software.',
   base: '/',
   cleanUrls: true,
   ignoreDeadLinks: true,
@@ -26,30 +26,49 @@ export default defineConfig({
     sidebar: {
       '/drafts/': [
         {
-          text: 'Tier 1 - Identity & Execution',
+          text: 'Layer 0 — Execution Infrastructure',
           items: [
-            { text: 'HEM - Human Escalation', link: '/drafts/hem' },
-            { text: 'CAP - AI Prohibition', link: '/drafts/cap' },
-            { text: 'IDP - Intent Declaration', link: '/drafts/idp' },
+            { text: 'KEE-1 - Kernel Execution Environment', link: '/drafts/kee' },
+            { text: 'KEE-2/DIST - Distributed Runtime (Class B)', link: '/drafts/kee2' },
           ]
         },
         {
-          text: 'Tier 2 - Delegation & Audit',
+          text: 'Layer 1 — Identity & Execution',
           items: [
+            { text: 'KIA - Kernel Attestation', link: '/drafts/kia' },
+            { text: 'SOV - Sovereign Object', link: '/drafts/sov' },
+            { text: 'MJWT - Mandate JWT', link: '/drafts/mjwt' },
+            { text: 'IDP - Intent Declaration', link: '/drafts/idp' },
+            { text: 'HEM - Human Escalation', link: '/drafts/hem' },
             { text: 'AEP - Agentic Execution', link: '/drafts/aep' },
+          ]
+        },
+        {
+          text: 'Layer 2 — Delegation & Audit',
+          items: [
             { text: 'MAD - Multi-Agent Delegation', link: '/drafts/mad' },
             { text: 'GAR - Governed Action Record', link: '/drafts/gar' },
           ]
         },
         {
-          text: 'Tier 3 - Policy, Trust & Privacy',
+          text: 'Layer 3 — Policy, Trust & Privacy',
           items: [
-            { text: 'PT - Progressive Trust', link: '/drafts/pt' },
-            { text: 'KIA - Kernel Attestation', link: '/drafts/kia' },
+            { text: 'CAP - AI Prohibition', link: '/drafts/cap' },
             { text: 'CAP-RRS - Regulation Schema', link: '/drafts/cap-rrs' },
-            { text: 'MJWT - Mandate JWT', link: '/drafts/mjwt' },
+            { text: 'CAP-RRS-JP - Japan LRI Profile (Class B)', link: '/drafts/cap-rrs-jp' },
+            { text: 'PT - Progressive Trust', link: '/drafts/pt' },
             { text: 'FAIP - Federated Privacy', link: '/drafts/faip' },
-            { text: 'SOV - Sovereign Object', link: '/drafts/sov' },
+          ]
+        },
+        {
+          text: 'Layer 4 — Governance Protocols',
+          items: [
+            { text: 'ACD - Agent Compliance Disclosure', link: '/drafts/acd' },
+            { text: 'PEER - Cross-Principal Communication', link: '/drafts/peer' },
+            { text: 'RGP - Resource Governance', link: '/drafts/rgp' },
+            { text: 'GRP - Governed Remediation', link: '/drafts/grp' },
+            { text: 'AOP - Agent Orchestration', link: '/drafts/aop' },
+            { text: 'DAM - Data Artifact Management', link: '/drafts/dam' },
           ]
         },
       ],

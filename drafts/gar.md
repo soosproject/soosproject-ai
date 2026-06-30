@@ -1,8 +1,8 @@
 # Governance Audit Record
 
 Layer 3 — Governance
-**draft-sato-soos-gar-02**
-See this URL for full draft protocol [Datatracker](https://datatracker.ietf.org/doc/draft-sato-soos-gar/)
+**draft-sato-soos-gar-03**
+See full draft text: [Datatracker](https://datatracker.ietf.org/doc/draft-sato-soos-gar/)
 See [SOOS Stack](/stack) implementation
 
 ---
@@ -13,7 +13,9 @@ When your AI agent does something harmful, can you prove exactly what it decided
 
 GAR is the tamper-evident record that answers that question. Every governance decision a SOOS kernel makes — allow, deny, escalate, suspend — produces a signed GAR entry linked causally to the entry that triggered it. The result is not a log. It is a non-suppressible audit stream that can be queried like a SIEM feed and proves, cryptographically, what the agent decided and why.
 
-**The design premise:** an audit trail that can be suppressed, modified, or reconstructed after the fact is not an audit trail. GAR makes the governance record non-suppressible at the kernel layer.
+Version -03 extends GAR's output into the OTel pipeline. Every Cedar evaluation now emits five or more OTel span attributes in the normative `soos.governance.*` namespace — making governance decisions visible in existing Prometheus, Grafana, and Jaeger stacks without any additional tooling.
+
+**The design premise:** an audit trail that can be suppressed, modified, or reconstructed after the fact is not an audit trail. GAR makes the governance record non-suppressible at the kernel layer — and now makes it observable in real-time through the OTel infrastructure you already have.
 
 ---
 
@@ -21,71 +23,75 @@ GAR is the tamper-evident record that answers that question. Every governance de
 
 ### IETF Working Groups
 
-GAR is a domain-specific application of the SCITT (Supply Chain Integrity, Transparency and Trust) architecture, extended with causal ordering semantics for agentic governance events. GAR is the primary candidate for presentation to the SCITT WG at IETF 126 Vienna as an AI governance application — it expands SCITT's applicability without competing with its core software supply chain work.
+GAR is a domain-specific application of the SCITT architecture, extended with causal ordering semantics for agentic governance events. GAR is the primary candidate for presentation to the SCITT WG at IETF 126 Vienna as an AI governance application — it expands SCITT's applicability without competing with its core software supply chain work.
 
-GAR extends SCITT in one specific dimension: SCITT is artifact-centric (software bills of materials, firmware attestations). GAR is event-centric. GAR entries are governance decisions, not artifacts. The causal ordering between entries — action B was caused by the outcome of policy evaluation of action A — has no equivalent in SCITT's append-only model. GAR declares three SCITT extensions: `causal_parent_id`, `session_sequence_number`, and `governance_decision`.
+Version -03 adds material directly relevant to three WGs. For SCITT: the Session Block Merkle anchoring model (§14) is structurally compatible with SCITT's transparent append-only ledger. The Session Block is a signed claim about a governance session — the SOOS analogue of a SCITT Signed Statement. SCITT-compatible transparency statements for Session Block anchors are flagged as OQ-OTEL-03 for post-Vienna specification. For NMOP and SACM: the normative `soos.governance.*` OTel attribute namespace (§13) is the first attempt in an IETF draft to define a semantic convention for AI governance telemetry. The six sub-namespaces cover governance decisions, Cedar policy provenance, ACD handshakes, consent context, mandate scope, and integrity attributes. For ANML: the Verified External Auditor credential and the four new ALE types (ALE-NEW-01 through ALE-NEW-04) expand the agent accountability primitive set.
 
-To engage on GAR: [IETF Datatracker](https://datatracker.ietf.org/doc/draft-sato-soos-gar/) · file issues at [GitHub](https://github.com/soosproject/soos-drafts)
+GAR extends SCITT in one specific dimension: SCITT is artifact-centric. GAR is event-centric. The causal ordering between entries has no equivalent in SCITT's append-only model. GAR declares three SCITT extensions: `causal_parent_id`, `session_sequence_number`, and `governance_decision`.
+
+To engage: [IETF Datatracker](https://datatracker.ietf.org/doc/draft-sato-soos-gar/) · [GitHub](https://github.com/soosproject/soos-drafts)
 
 ### App builders
 
-If you are building an agentic AI system today, your audit trail is a log — a sequence of events recorded by the application layer, suppressible by the application, and reconstructable after the fact. When something goes wrong, you can see what happened; you cannot prove that the log wasn't modified, and you cannot reconstruct the causal chain of governance decisions that led to the outcome.
+If you are building an agentic AI system today, your audit trail is a log — suppressible, modifiable, and insufficient as regulatory evidence. GAR closes this gap at the kernel layer.
 
-GAR closes this gap by specifying the audit record at the kernel layer. Every governance event is written to GAR before the result is returned to the application. The record is kernel-signed, causally ordered, and SCITT-transparent — it cannot be suppressed by the application layer and cannot be modified without breaking the signature chain.
+Version -03 adds two things that matter for production deployments. First, every Cedar evaluation now emits `soos.governance.*` OTel span attributes — you can ingest governance decisions into your existing Grafana or Datadog stack without any custom tooling. Alert on `soos.governance.decision == "DENY"`, dashboard `soos.cap.tier` distributions, trace consent exceptions via `soos.consent.purpose_codes`. Second, three provenance fields are now mandatory on every CEDAR_PERMIT and CEDAR_DENY record: `cedar_policy_id`, `cap_rrs_control_id`, and `authority_source_uri`. Every governance decision now carries a traceable chain back to the law article that governed it.
 
-Without GAR: your audit trail is as trustworthy as your application. With GAR: your audit trail is as trustworthy as the kernel.
+Without GAR: your audit trail is as trustworthy as your application. With GAR: your audit trail is as trustworthy as the kernel — and visible in your OTel stack in real-time.
 
 [TypeScript example →](https://github.com/soosproject/soos-examples/tree/main/gar)
 
 ### SecOps and compliance auditors
 
-GAR is a SIEM feed for agentic AI governance events. Every governance decision — Cedar PERMIT, Cedar DENY, HEM escalation, session suspension — is a signed, causally-ordered record that can be ingested by any SIEM that accepts structured event streams. Post-incident reconstruction of an agent's decision chain is a GAR query, not a log forensics exercise.
+GAR is a SIEM feed for agentic AI governance events. Every governance decision — Cedar PERMIT, Cedar DENY, HEM escalation, session suspension — is a signed, causally-ordered record that can be ingested by any SIEM that accepts OTel or structured event streams.
 
-For compliance auditors: GAR provides the tamper-evident evidence layer that most AI governance frameworks describe in policy but do not specify at the protocol level. The GAR record is the signed proof that a specific governance decision was made at a specific time for a specific agent action — the artifact that answers the auditor's question rather than the log that supports a reconstruction of it.
+Version -03 makes the feed richer: the `soos.governance.*` OTel namespace gives you 35+ structured attributes per governance span. Useful alert patterns: `soos.cap.conflict_detected == true` fires on catalog conflicts; `soos.governance.decision == "SUSPENDED"` fires when a law amendment suspends enforcement; `soos.acd.validation_result == "FAIL"` fires on ACD handshake failures. The Session Block Merkle integrity (§14) means you can verify that any segment of the governance feed has not been tampered with — the KIA signature covers the full Session Block, not individual records.
+
+For compliance auditors: the three mandatory provenance fields (`cedar_policy_id`, `cap_rrs_control_id`, `authority_source_uri`) on every Cedar evaluation record give you the complete chain from audit event to governing statute. An auditor reviewing a CEDAR_DENY can follow `authority_source_uri` to the exact law article that produced the denial.
 
 ### Agentic AI and coding assistants
 
 **What to tell your coding assistant:**
 
-> "I need to implement SOOS GAR (Governance Audit Record, draft-sato-soos-gar-02). GAR is a SCITT-profile event log for agentic governance decisions. Every governance decision (ALLOW, DENY, ESCALATE, SUSPEND) must be written to GAR before the result is returned. GAR entries have causal ordering via causal_parent_id — each entry links to the entry that caused it. The ALE (Authority Lifecycle Event) registry defines 21 structured event types (ALE-001 through ALE-021) for agent session lifecycle events. Key fields: record_id (MUST on DENY/ESCALATE/SUSPEND), causal_parent_id, session_sequence_number, governance_decision, ale_type. The HEM_LAYER_DISCREPANCY event (§8.2) is GAR-only — audit record when LLM-HEM and SOOS-HEM disagree. GDPR Security Considerations paragraph is in §12."
+> "I need to implement SOOS GAR (Governance Audit Record, draft-sato-soos-gar-03). GAR is a SCITT-profile event log for agentic governance decisions. Every governance decision (PERMIT, DENY, ESCALATE, SUSPEND) must be written to GAR before the result is returned. GAR entries have causal ordering via causal_parent_id. The ALE registry defines event types for agent session lifecycle. Version -03 adds: (1) the soos.governance.* OTel attribute namespace — MUST emit on every Cedar evaluation: soos.governance.decision, soos.governance.kernel_id, soos.governance.session_id, soos.governance.cap_profile_id, soos.governance.cap_profile_hash; MUST also emit on PERMIT/DENY: soos.cap.cedar_policy_id, soos.cap.cap_rrs_control_id, soos.cap.authority_source_uri, soos.cap.tier, soos.cap.conflict_detected; compute soos.gar.prev_span_hash in the kernel before emission. (2) Three mandatory provenance fields on every CEDAR_PERMIT and CEDAR_DENY GAR record: cedar_policy_id, cap_rrs_control_id, authority_source_uri. (3) Four new SAR header fields: cap_profile_id, cap_profile_hash, acd_session_id, soos.gar.block_id. (4) The SOOS GAR Processor: filter governance spans → aggregate by session_id into Session Blocks → compute Merkle root → request KIA signature (once per block, not per span) → write to GAR storage → periodically anchor Merkle DAG."
 
-**Key schema fields:**
+**Key schema fields (new in -03):**
 
 | Field | Type | Description |
 |---|---|---|
-| `record_id` | string | MUST on DENY/ESCALATE/SUSPEND events; unique identifier |
-| `causal_parent_id` | string | Reference to the GAR entry that caused this entry |
-| `session_sequence_number` | integer | Monotonically increasing per GEC session |
-| `governance_decision` | enum | ALLOW / DENY / ESCALATE / SUSPEND |
-| `intent_id` | string | Bound Intent Declaration (IDP reference) |
-| `cedar_policy_id` | string | Cedar policy that produced this decision |
-| `ale_type` | string | ALE event type if this is an Authority Lifecycle Event |
-| `kernel_signature` | string | Kernel-signed record — SCITT transparency statement |
-| `completion_state` | enum | CLEAN / PARTIAL / UNKNOWN (on session events) |
-| `hem_layer_discrepancy` | boolean | True if LLM-HEM and SOOS-HEM disagreed on this cycle |
-
-**Minimal Cedar policy example:**
-
-```cedar
-// Require GAR record before result is returned to caller
-permit (
-  principal is GECKernel,
-  action == Action::"ReturnGovernanceResult",
-  resource
-)
-when {
-  context.gar_record_written == true &&
-  context.record_id_present == true
-};
-```
+| `soos.governance.decision` | OTel span attr | `PERMIT` \| `DENY` \| `SUSPENDED` \| `ESCALATE` |
+| `soos.governance.kernel_id` | OTel span attr | KIA-derived kernel instance identifier |
+| `soos.cap.cedar_policy_id` | OTel span attr | Cedar policy evaluated |
+| `soos.cap.authority_source_uri` | OTel span attr | Governing law article URI |
+| `soos.cap.conflict_detected` | OTel span attr | true on catalog conflict events |
+| `soos.gar.prev_span_hash` | OTel span attr | Hash of preceding span; kernel-computed |
+| `soos.gar.block_id` | OTel span attr | Session Block ID (= OTel trace_id) |
+| `cedar_policy_id` | GAR record field | REQUIRED on CEDAR_PERMIT/DENY |
+| `cap_rrs_control_id` | GAR record field | REQUIRED on CEDAR_PERMIT/DENY |
+| `authority_source_uri` | GAR record field | REQUIRED on CEDAR_PERMIT/DENY |
+| `cap_profile_hash` | SAR header field | SHA-256 of active Cedar policy set |
 
 ### Government and regulators
 
 GAR is the protocol that makes AI governance decisions auditable to regulatory standards. The signed, tamper-evident record of every governance decision — what the agent was allowed to do, what it was denied, what required human escalation — is the evidence layer that regulatory inquiries require.
 
-The GAR §12 Security Considerations paragraph addresses GDPR Article 5(1)(f) (integrity and confidentiality of processing records) and equivalent data protection obligations. The record is kernel-signed; modification after the fact breaks the signature chain and is detectable.
+Version -03 adds two capabilities of direct regulatory interest. First, the mandatory provenance chain: every CEDAR_PERMIT and CEDAR_DENY record now carries `authority_source_uri` — the canonical URI of the governing law article. A Japanese regulator can query `WHERE authority_source_uri LIKE '%第17条%'` and retrieve every agent action governed by APPI Article 17, across every deployed kernel, for any time window, with tamper-evident proof. Second, the four new ALE types cover the law amendment lifecycle: `CATALOG_VERSION_CONFLICT` (ALE-NEW-03) fires when a statutory amendment suspends enforcement; `INTERPRETATION_SUPERSEDED` (ALE-NEW-04) fires when an interpretive ruling changes the authoritative reading without amending the statute. Both events are GAR-auditable and carry the complete provenance chain.
 
-For Japanese regulatory alignment: GAR records are designed to satisfy the APPI requirement for processing records and the FSA's audit trail requirements for AI systems in financial services.
+The full chain from human law to bilateral audit record is now normatively specified:
+
+```
+APPI Article 17 (e-Gov URI)
+    ↓ authority_source_uri [mandatory provenance]
+CAP-RRS OSCAL control
+    ↓ cap_rrs_control_id [mandatory provenance]
+Cedar policy in GEC
+    ↓ cedar_policy_id [mandatory provenance]
+GAR enforcement record (CEDAR_PERMIT or CEDAR_DENY)
+    ↓ acd_session_id [bilateral correlation]
+Resource provider compliance log
+    ↓ Merkle inclusion proof [Session Block]
+KIA-signed Session Block
+```
 
 For collaboration on jurisdiction-specific audit record requirements: [tomsato@myauberge.jp](mailto:tomsato@myauberge.jp)
 
@@ -93,21 +99,40 @@ For collaboration on jurisdiction-specific audit record requirements: [tomsato@m
 
 ## Core technology
 
-**Problem:** AI agent governance events are logged at the application layer — suppressible, modifiable, and insufficient as regulatory evidence. There is no standard for a tamper-evident, causally-ordered governance event record.
+**Problem:** AI agent governance events are logged at the application layer — suppressible, modifiable, and insufficient as regulatory evidence. There is no standard for a tamper-evident, causally-ordered, OTel-observable governance event record.
 
-**Mechanism:** GAR defines a kernel-signed, append-only event record with causal ordering. Every governance decision is written to GAR before the result is returned. Each entry carries a `causal_parent_id` linking it to the entry that triggered it. The record is a SCITT transparency statement — independently verifiable.
+**Mechanism:** GAR defines a kernel-signed, append-only event record with causal ordering. Every governance decision is written to GAR before the result is returned. Each entry carries `causal_parent_id` linking it to the triggering entry. Simultaneously, the GEC emits OTel spans with `soos.governance.*` attributes for real-time observability. The SOOS GAR Processor aggregates spans into Session Blocks, computes Merkle roots, and requests a single KIA signature per block.
 
-**Output:** A non-suppressible, causally-ordered, kernel-signed audit stream. Queryable as a SIEM feed. Provable as regulatory evidence. Reconstructable as a complete causal chain for any governance decision made during a governed execution session.
+**Output:** A non-suppressible, causally-ordered, kernel-signed audit stream — queryable as a SIEM feed, provable as regulatory evidence, and observable in real-time via standard OTel infrastructure. Every Cedar evaluation produces both a GAR record (for audit) and an OTel span (for observability).
 
-**Who verifies it:** SecOps teams ingesting governance events as a SIEM feed, compliance auditors requiring tamper-evident evidence, regulators requesting proof of governance decisions, and security researchers analysing agentic AI behaviour patterns.
+**Who verifies it:** SecOps teams ingesting governance events as a SIEM feed, compliance auditors requiring tamper-evident evidence, regulators requesting proof of governance decisions with statutory provenance, and security researchers analysing agentic AI behaviour patterns.
+
+---
+
+## New in GAR-03 — OTel Governance Semantic Convention
+
+Version -03 defines the `soos.governance.*` OTel attribute namespace: the normative convention for how SOOS kernels emit governance telemetry into the OpenTelemetry pipeline.
+
+Six sub-namespaces, each targeting a different layer of governance observability:
+
+| Namespace | What it covers | When emitted |
+|---|---|---|
+| `soos.governance.*` | Core decision + kernel identity | All governance spans |
+| `soos.cap.*` | Cedar policy provenance: policy ID, OSCAL control, law URI, tier | PERMIT and DENY spans |
+| `soos.acd.*` | ACD handshake result and validation layer | ACD session spans |
+| `soos.consent.*` | Consent reference, purpose codes, governing law | Consent-governed spans |
+| `soos.mandate.*` | Operator identity, delegation depth, resource bound | All governance spans |
+| `soos.gar.*` | Session Block ID, Merkle root, KIA signature, prev span hash | All governance spans |
+
+The OTel pipeline is explicitly untrusted. Integrity is rooted in the kernel: `soos.gar.prev_span_hash` is computed by the kernel before any span leaves the kernel boundary. Any modification after emission breaks the hash chain. The SOOS GAR Processor computes a Merkle root over all session spans and requests a KIA signature over that root — one signature per Session Block, not per span.
 
 ---
 
 ## The ALE Event Registry
 
-The Authority Lifecycle Event (ALE) registry defines structured event types for the agent session lifecycle. ALE events are a top-level GAR event category with their own IANA sub-registry (§13.3).
+The Authority Lifecycle Event (ALE) registry defines structured event types for the agent session lifecycle. ALE events are a top-level GAR event category with their own IANA sub-registry.
 
-**ALE-001 through ALE-012** — Agent Session Revocation and Recovery lifecycle (COMPLETE, GAR-02 §14a):
+**ALE-001 through ALE-012** — Agent Session Revocation and Recovery lifecycle (GAR-02 §12):
 
 | ALE | Event | Trigger |
 |---|---|---|
@@ -124,7 +149,7 @@ The Authority Lifecycle Event (ALE) registry defines structured event types for 
 | ALE-011 | RECOVERY_INITIATED | Recovery procedure started |
 | ALE-012 | RECOVERY_COMPLETE | Recovery procedure completed |
 
-**ALE-018 through ALE-020** — Cluster resource events (COMPLETE, GAR-02 §8.5):
+**ALE-018 through ALE-020** — Cluster resource events (GAR-02 §8.5):
 
 | ALE | Event | Trigger |
 |---|---|---|
@@ -132,71 +157,84 @@ The Authority Lifecycle Event (ALE) registry defines structured event types for 
 | ALE-019 | CLUSTER_BLOCK_START | CLUSTER_BLOCKED state entered |
 | ALE-020 | CLUSTER_BLOCK_END | CLUSTER_BLOCKED state exited |
 
-**Additional ALE types (ALE-013–017, ALE-021)** are defined for post-Vienna workstreams (data architecture, temporal governance, goal scoping).
+**New in GAR-03 — ALE-NEW-01 through ALE-NEW-04** (Constitutional/Catalog events):
+
+| ALE | Event | Trigger |
+|---|---|---|
+| ALE-NEW-01 | CAP_CONSENT_EXCEPTION_ACTIVATED | Cedar consent exception evaluated PERMIT |
+| ALE-NEW-02 | CAP_CATALOG_CONFLICT_DETECTED | Conflict detected at catalog load time |
+| ALE-NEW-03 | CATALOG_VERSION_CONFLICT | Statutory amendment detected posterior to endorsed_at |
+| ALE-NEW-04 | INTERPRETATION_SUPERSEDED | Interpretive ruling supersedes endorsement basis |
+
+ALE-NEW-03 and ALE-NEW-04 are the GAR-side audit records for the CAP-RRS Statute-Primacy Rule. When a law changes, the suspension is recorded in GAR with the full provenance chain — law article, amendment date, delta in days, HEM escalation ID, and resolution when re-endorsed.
 
 ---
 
-## HEM_LAYER_DISCREPANCY
+## The Session Block — Merkle integrity for governance spans
 
-When LLM-HEM (the model layer) signals that escalation is warranted but SOOS-HEM (the kernel layer) finds no trigger condition, the kernel records `HEM_LAYER_DISCREPANCY` in GAR §8.2. This event is audit-only — it does not halt execution. Over time, patterns of HEM_LAYER_DISCREPANCY events inform model assessment and mandate calibration.
+The Session Block is the unit of Merkle-protected integrity in GAR-03. Each governed session produces one Session Block.
 
-This is a GAR-only event: it does not produce a CAP error code, it does not trigger HEM escalation. Its purpose is to create an observable record of cases where the model and the kernel disagree about whether a situation requires human oversight.
+Construction: the SOOS GAR Processor filters governance spans from the OTel pipeline by `soos.governance.*` presence, aggregates them by `soos.governance.session_id`, and computes a SHA-256 Merkle root over all event delta records. The GEC then signs the Merkle root with the KIA Governance Identity Keypair — once per block, not per span. The signed block is written to GAR tiered storage.
+
+Tamper detection has two independent layers: the `soos.gar.prev_span_hash` chain detects span modification or deletion within a session; the Merkle root and KIA signature detect any modification of the aggregated block.
+
+A regulator verifying audit integrity needs only the signed Session Block and the published KIA attestation chain — no access to the OTel backend, the GEC infrastructure, or the operator's systems.
 
 ---
 
 ## Use cases
 
-**Post-incident reconstruction — financial services**
+**Japan regulator — APPI Article 17 query**
 
-An agent is found to have made an unauthorised payment. The security operations team queries GAR for the session. The GAR record provides the complete causal chain: the Intent Declaration that initiated the session, the Cedar PERMIT that authorised the payment action, the `causal_parent_id` trace back to the delegation grant, and the `session_sequence_number` confirming this was not a replayed event. The investigation takes minutes, not days. The GAR record is the forensic evidence submitted to the regulator.
+A Personal Information Protection Commission inspector queries GAR for all agent actions governed by APPI Article 17 across a financial services deployment. The query: `WHERE authority_source_uri = "https://elaws.e-gov.go.jp/document?lawid=415AC0000000057#..."`. GAR returns every CEDAR_PERMIT and CEDAR_DENY on that article, with `cap_rrs_control_id` linking to the Regulation Record and `soos.gar.block_id` linking to the signed Session Block for tamper-evident verification. The inspector verifies the KIA signature on three Session Blocks. The audit takes an hour, not a week.
 
-**Compliance audit — GDPR Article 22**
+**SecOps team — real-time governance monitoring**
 
-A data protection authority requests evidence that an AI system's automated decisions on credit applications were governed by declared policy. GAR provides the record: every credit decision is a governance event with the Cedar policy ID that produced it, the Intent Declaration it was evaluated against, and the kernel signature that proves the record was not modified after the fact. The GAR record is the Article 22 audit evidence.
+A security operations centre ingests `soos.governance.*` OTel spans into Grafana. Dashboard panels: cedar evaluation decision distribution, SUSPENDED events by session (indicating law amendment activity), CAP tier distribution (Tier 0-A events are anomalies), ACD validation failures. Alert rule: `soos.cap.conflict_detected == true` fires on catalog conflicts; `soos.gar.prev_span_hash` chain gap fires CRITICAL. The governance feed is treated like a firewall log — a real-time signal of governance state.
 
-**SIEM integration — real-time governance monitoring**
+**Post-incident reconstruction — consent exception audit**
 
-A security operations centre ingests GAR events as a structured SIEM feed. Alert rules fire on: three consecutive HEM escalations in a session (anomalous pattern), `HEM_LAYER_DISCREPANCY` frequency exceeding threshold (model behaviour diverging from kernel expectations), or any ALE-003 (SESSION_HALTED_PARTIAL) event in a regulated workflow. The SIEM treats the GAR stream as it would a firewall log — a real-time signal of governance state.
+An agent is found to have accessed personal data in a category beyond its stated purpose. The audit query targets `ALE-NEW-01` (CAP_CONSENT_EXCEPTION_ACTIVATED) for the session. Each consent exception record carries `purpose_codes_active`, `data_category_accessed`, `consent_expiry`, and `governing_law`. The investigation establishes which consent exceptions fired, whether the consent was valid at evaluation time, and whether the data category accessed was within the consented scope. The `endorsed_at` field confirms which version of the APPI Regulation Record governed the evaluation.
 
 ---
 
 ## How this builds on existing work
 
-**SCITT (Supply Chain Integrity, Transparency and Trust, draft-ietf-scitt-architecture-22)** provides the transparency statement model, append-only log semantics, and receipt-based inclusion proofs that GAR inherits. GAR is a domain-specific SCITT application extended with causal ordering for governance events. SCITT handles artifacts; GAR handles governance decisions. The two are complementary, not competing.
+**SCITT (Supply Chain Integrity, Transparency and Trust)** provides the transparency statement model, append-only log semantics, and receipt-based inclusion proofs that GAR inherits. The Session Block Merkle anchoring model (§14) is architecturally compatible with SCITT's transparent append-only ledger — Session Block anchors are candidates for SCITT Signed Statement submission (OQ-OTEL-03, post-Vienna).
 
-**W3C PROV-DM** is the provenance data model that GAR's causal ordering aligns with. Each GAR entry is a PROV-DM Activity; `causal_parent_id` is the PROV-DM `wasInformedBy` relationship. This alignment makes GAR records consumable by PROV-DM-aware audit tooling without transformation.
+**OpenTelemetry** is the governance observability transport for GAR-03. The `soos.governance.*` namespace is a SOOS-specific OTel semantic convention, following the same naming pattern as OpenTelemetry's existing semantic conventions for HTTP, databases, and messaging. Governance telemetry and operational telemetry can flow through the same OTel pipeline to the same backend.
 
-**SIEM standards (CEF, LEEF, ECS)** are the operational formats that GAR's event schema is designed to map to. GAR does not specify a SIEM output format — it specifies the kernel-layer record; the mapping to SIEM ingestion formats is an implementation concern. The field names and event taxonomy are chosen to make this mapping straightforward.
+**W3C PROV-DM** is the provenance data model that GAR's causal ordering aligns with. Each GAR entry is a PROV-DM Activity; `causal_parent_id` is the PROV-DM `wasInformedBy` relationship.
 
 ---
 
 ## Related work
 
-**draft-ietf-scitt-architecture-22** — GAR is a SCITT application. The SCITT WG Vienna session is the primary community engagement target for GAR. The positioning: GAR as the AI governance application that demonstrates SCITT's extensibility beyond software supply chain.
+**draft-ietf-scitt-architecture-22** — GAR is a SCITT application. The SCITT WG Vienna session is the primary community engagement target. Session Block Merkle anchors are the -03 SCITT contribution.
 
-**draft-ietf-oauth-security-topics** — GAR's non-suppressibility requirement addresses the audit trail gap in OAuth-based agentic deployments. An OAuth access log is application-layer; GAR is kernel-layer. The distinction matters when the application layer is the entity being governed.
+**OpenTelemetry Semantic Conventions** — the `soos.governance.*` namespace follows OTel naming conventions and is designed to coexist with `http.*`, `db.*`, and `messaging.*` namespaces in mixed-workload OTel pipelines.
 
-**OpenTelemetry** — operational observability for agentic AI. GAR is governance observability. The two are complementary: OTel captures performance and errors; GAR captures governance decisions and their causal chain. A complete agentic AI observability stack uses both.
+**NIST AI RMF** — GAR implements the Map and Measure functions. Map: the ALE taxonomy maps the authority lifecycle. Measure: the SAR and mandatory provenance fields provide measurable, auditable session records at the action level.
 
 ---
 
 ## Security
 
-**Key security properties:** Every GAR record is kernel-signed before the governance result is returned to the application layer. The application cannot suppress a GAR record for a governance event that has occurred — the record is written before the result is visible to the application. `record_id` is MUST on DENY, ESCALATE, and SUSPEND events — a conforming implementation cannot produce these outcomes without a corresponding GAR record.
+**Key security properties:** Every GAR record is kernel-signed before the governance result is returned. `record_id` is MUST on DENY, ESCALATE, and SUSPEND events. The three mandatory provenance fields (§8.6) create an unbroken chain from audit event to governing law article.
 
-**Causal ordering integrity:** The `causal_parent_id` chain is integrity-protected by the kernel signature. A modified entry that breaks the causal chain is detectable. A missing entry in the causal chain (a governance event with no GAR record) is detectable by the monotonically increasing `session_sequence_number`.
+**OTel pipeline is untrusted:** `soos.gar.prev_span_hash` is computed by the kernel before emission. Namespace collisions (non-kernel processes emitting `soos.governance.*` attributes) are detected by the GAR Processor via OTel resource attribute validation. Span suppression is detected by hash chain gaps.
 
-**GDPR and data protection:** GAR §12 (Security Considerations) addresses Article 5(1)(f) integrity and confidentiality obligations for processing records. GAR records that contain personal data must be handled according to the data protection requirements of the deployment jurisdiction. The record schema separates governance metadata (always retained) from action payload (subject to data minimisation).
+**CVE-2026-50141 class defense:** The GEC MUST NOT accept agent-supplied identity claims for `kernel_id`, `soos.governance.kernel_id`, or `xpid` fields. These MUST be derived from the KIA attestation chain, not from agent-supplied metadata.
 
-**Session revocation:** When a session is revoked, GAR records the revocation event (ALE-001) before propagating to sub-agents. The revocation record is the authoritative timestamp for all subsequent completion state determinations.
+**Session Block Merkle integrity:** Any span modification changes the Merkle leaf, changes the Merkle root, invalidates the KIA signature. Two independent layers (span hash chain + Merkle/KIA) require an attacker to compromise both independently.
 
 ---
 
 ## SOOS stack context
 
-GAR sits at **Level 3 — Governance**, alongside HEM and CAP. It is the audit sink for the entire SOOS stack — every governance decision by every other draft produces a GAR record. It depends on KIA (kernel signing credentials) and IDP (Intent Declaration reference for every session record). It is consumed by the compliance, security operations, and regulatory audit layers above the SOOS stack.
+GAR sits at **Level 3 — Governance**, alongside HEM and CAP. It is the audit sink for the entire SOOS stack — every governance decision by every other draft produces a GAR record. It depends on KIA (Governance Identity Keypair for Session Block signing), IDP (Intent Declaration reference for every session record), and CAP-RRS (CATALOG_VERSION_CONFLICT and INTERPRETATION_SUPERSEDED event types owned by CAP-RRS). It is consumed by the compliance, security operations, and regulatory audit layers above the SOOS stack.
 
-Related drafts: [HEM](/drafts/hem) · [CAP](/drafts/cap) · [AEP](/drafts/aep) · [MAD](/drafts/mad) · [IDP](/drafts/idp)
+Related drafts: [HEM](/drafts/hem) · [CAP](/drafts/cap) · [CAP-RRS](/drafts/cap-rrs) · [AEP](/drafts/aep) · [MAD](/drafts/mad) · [IDP](/drafts/idp)
 
 ---
 
@@ -204,5 +242,5 @@ Related drafts: [HEM](/drafts/hem) · [CAP](/drafts/cap) · [AEP](/drafts/aep) �
 
 - [File an issue on GitHub](https://github.com/soosproject/soos-drafts/tree/main/gar)
 - [IETF Datatracker — full draft text](https://datatracker.ietf.org/doc/draft-sato-soos-gar/)
-- [All Drafts](/drafts) — the complete 12-draft governance stack
+- [All Drafts](/drafts) — the complete SOOS governance stack
 - Contact: [tomsato@myauberge.jp](mailto:tomsato@myauberge.jp)
