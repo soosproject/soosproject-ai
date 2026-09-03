@@ -1,7 +1,7 @@
 # Human Escalation Mechanism
 
 Layer 3 — Governance
-**draft-sato-soos-hem-05**
+**draft-sato-soos-hem-06**
 See the full draft protocol at [Datatracker](https://datatracker.ietf.org/doc/draft-sato-soos-hem/)
 See [SOOS Stack](/stack) implementation
 
@@ -19,15 +19,17 @@ But the second failure mode is subtler: even when the right human is reached, th
 
 ---
 
-## What's new in HEM-05
+## What's new in HEM-06
 
-HEM-05 adds ten **interaction classes** — normatively specified GEC-human interactions that govern the escalation surface before, during, and after HEM_PENDING events. These are distinct from trigger classes (which determine when escalation fires) and define the structure, required fields, available decision types, and GAR audit entries for each category of human interaction.
+HEM-06 adds ten **interaction classes** — normatively specified GEC-human interactions that govern the escalation surface before, during, and after HEM_PENDING events. These are distinct from trigger classes (which determine when escalation fires) and define the structure, required fields, available decision types, and GAR audit entries for each category of human interaction.
 
 It also adds:
 - **INV-HEM-01 (The Surfacing Obligation)**: a KernelSpec invariant prohibiting suppression of governance-relevant information by any party
 - **§7 Human Readiness Score (HRS)**: a kernel-computed composite score reflecting the human principal's capacity for well-informed, timely, unconflicted decision-making
-- **§8 Tier 0-A Integration**: normative HEM interface for the three new CAP-04 absolute prohibitions (MANIPULATION, PERFORMED_EMOTION, BIOMETRIC_SIGNAL_INFERENCE)
+- **§8 Tier 0-A Integration**: normative HEM interface for the three new CAP-05 absolute prohibitions (MANIPULATION, PERFORMED_EMOTION, BIOMETRIC_SIGNAL_INFERENCE)
 - **Five new Security Considerations** (§18.10–18.14): manipulation via HEM channel, performed emotion detection bypass, HRS scoring manipulation, approval fatigue exploitation, and divergence protocol gaming
+- **Joined-verification requirement (§12.8)**: a party relying on a resolved HEM decision as evidence of a *specific* action's authorization must now verify the human's signature together with the kernel's own signature over the escalation request — closing a gap where exact-action binding was real but indirect
+- **Explicit at-most-once enforcement (§12.8, §18.2)**: a new `HEM_ALREADY_RESOLVED` error code makes replay rejection a named, testable MUST instead of an implied property of the state machine, and corrects an earlier overstated claim that signature verification alone prevented replay
 
 ---
 
@@ -35,19 +37,15 @@ It also adds:
 
 ### IETF Working Groups
 
-HEM-05 is relevant to ALLDISPATCH, OAUTH, SECEVENT, WIMSE, and the nascent ANML and AUDIT discussions.
+HEM's execution-time human authorization mechanism (HEM-HIGH-1, Section 7.5.1) is a live existence proof for R10 in `draft-reece-wimse-cross-org-delegation-01` — the WIMSE requirement that a delegated authority be able to designate action classes as needing evidence of a decision from an accountable human approver distinct from the executing agent, offline-verifiable, bound to the exact action, and relied upon at most once. HEM-06 grades cleanly against most of R10's clauses (distinct approver, offline verification, fail-closed on invalid evidence) and closes two real gaps this revision: exact-action binding is now backed by an explicit joined-verification requirement (a resolved HEM decision's own signature covers only `hem_id`, not the action's arguments directly — a relying party MUST now verify it together with the kernel's own signature over the escalation request that `hem_id` identifies), and at-most-once reliance is now a named MUST with a dedicated error code (`HEM_ALREADY_RESOLVED`) rather than an implied property of the state machine.
 
-The ten new interaction classes extend HEM's scope from escalation trigger specification to the full human-AI decision interface at the kernel layer. The HRS (Section 8) is a composite behavioral score computed by the GEC for each principal — not a trust score, but a readiness signal used for fatigue detection and emotional state advisory. It operates on observable behavioral signals only, with an explicit prohibition on biometric inference absent consent (tying to BIOMETRIC_SIGNAL_INFERENCE Tier 0-A in CAP-04).
-
-The HEM-CONSENT class provides a normative APPI Article 17 binding for consent-gated actions — of interest to the OAuth WG for consent lifecycle specification and to WIMSE for workload identity credential scope management.
-
-The GRP integration in HEM-PRE-2 (Section 7.2.2) connects the HEM interaction surface to the Governed Remediation Protocol (draft-sato-soos-grp), where excessive RETRY count triggers mandatory human confirmation.
+One clause is honestly still open, and we're not pretending otherwise: whether a HEM-HIGH-1 classification made by one organization's CAP Profile is honored by another organization's kernel when a delegated action crosses that boundary — the cross-organizational case R10 is specifically about. This is the same clause both existing R10 implementations discussed on the WIMSE list (EMILIA, OASNT) also found only partially satisfiable. Tracked as OQ-HEM-XDOMAIN, deferred pending PEER's own cross-principal authorization work.
 
 To engage on HEM: [IETF Datatracker](https://datatracker.ietf.org/doc/draft-sato-soos-hem/) · file issues at [GitHub](https://github.com/soosproject/soos-drafts)
 
 ### App builders
 
-HEM-04 closed the gap on when to escalate. HEM-05 closes the gap on how to interact when you do.
+HEM-04 closed the gap on when to escalate. HEM-06 closes the gap on how to interact when you do.
 
 The ten interaction classes translate directly to implementation work:
 
@@ -67,7 +65,7 @@ The ten interaction classes translate directly to implementation work:
 
 ### Risk managers and legal
 
-HEM-05 closes five specific liability gaps that HEM-04 left open:
+HEM-06 closes five specific liability gaps that HEM-04 left open:
 
 **Rubber-stamp approval**: HEM-FAT-1 detects when a human principal's approval pattern indicates inattentive review and enforces a mandatory rest period. The audit record distinguishes genuine oversight from nominal compliance.
 
@@ -85,9 +83,9 @@ For insurance underwriting of AI-driven processes: the HRS (Section 8) provides 
 
 **What to tell your coding assistant:**
 
-> "I need to implement SOOS HEM-05 (Human Escalation Mechanism, draft-sato-soos-hem-05). This extends HEM-04 with ten new interaction classes. HEM-PRE-1 fires when an action requires pre-execution clarification; HEM-PRE-2 fires when confirmation is required before an irreversible action. HEM-DS-1 governs how option sets must be presented neutrally during escalation. HEM-LIM-1 fires when the agent is OUT_OF_DISTRIBUTION and must surface that limitation before proceeding. HEM-DIV-1 fires when the agent's actual transition request diverges from its declared IDP intent — it requires a Deliberation Record committed to GAR before any human decision. HEM-HIGH-1 fires for actions in Category A domains (MEDICAL, AVIATION, NUCLEAR) — mandatory review, DRR required. HEM-FAT-1 fires when the Human Readiness Score drops below HRS_FATIGUE_FLOOR (default 0.40) with secondary fatigue signals — blocks approvals, enforces 30-minute rest. HEM-EMO-1 is advisory only — no HEM_PENDING, just a notification. HEM-CONSENT fires when MJWT consent_scope is absent or expired for a consent-gated action — fail-closed, APPI Article 17 binding. All ten classes emit GAR ALEs (ALE-030 through ALE-041). INV-HEM-01 requires the GEC to surface all governance-relevant information — suppression by any party is a conformance violation."
+> "I need to implement SOOS HEM-06 (Human Escalation Mechanism, draft-sato-soos-hem-06). This extends HEM-04 with ten new interaction classes. HEM-PRE-1 fires when an action requires pre-execution clarification; HEM-PRE-2 fires when confirmation is required before an irreversible action. HEM-DS-1 governs how option sets must be presented neutrally during escalation. HEM-LIM-1 fires when the agent is OUT_OF_DISTRIBUTION and must surface that limitation before proceeding. HEM-DIV-1 fires when the agent's actual transition request diverges from its declared IDP intent — it requires a Deliberation Record committed to GAR before any human decision. HEM-HIGH-1 fires for actions in Category A domains (MEDICAL, AVIATION, NUCLEAR) — mandatory review, DRR required. HEM-FAT-1 fires when the Human Readiness Score drops below HRS_FATIGUE_FLOOR (default 0.40) with secondary fatigue signals — blocks approvals, enforces 30-minute rest. HEM-EMO-1 is advisory only — no HEM_PENDING, just a notification. HEM-CONSENT fires when MJWT consent_scope is absent or expired for a consent-gated action — fail-closed, APPI Article 17 binding. All ten classes emit GAR ALEs (ALE-030 through ALE-041). INV-HEM-01 requires the GEC to surface all governance-relevant information — suppression by any party is a conformance violation."
 
-**Key schema additions in HEM-05:**
+**Key schema additions in HEM-06:**
 
 | Field | Type | Description |
 |---|---|---|
@@ -127,7 +125,7 @@ when {
 
 ### Government and regulators
 
-HEM-05 maps to EU AI Act Article 14 at five distinct points:
+HEM-06 maps to EU AI Act Article 14 at five distinct points:
 
 - **Article 14(3)(b)** (AI system capabilities and limits): HEM-LIM-1 creates a normative requirement that capability limitations be surfaced before execution.
 - **Article 14(3)(d)** (high-risk domain oversight): HEM-HIGH-1 provides the mandatory review mechanism for the medical, aviation, and nuclear domains with a non-operator-configurable domain registry.
@@ -135,7 +133,7 @@ HEM-05 maps to EU AI Act Article 14 at five distinct points:
 - **Article 13(1)** (transparency): INV-HEM-01 prohibits suppression of governance-relevant information by any party.
 - **Article 14(4)(d)** (deciding not to use output): HEM_PENDING transition prohibition and TERMINATE decision type remain the technical stop capability.
 
-For Japan specifically: HEM-CONSENT provides APPI Article 17 binding for consent-required escalations. HEM-05 was designed with the 防災AX (disaster response AI) use case in view, where consent lifecycle management during crisis response is a live regulatory concern.
+For Japan specifically: HEM-CONSENT provides APPI Article 17 binding for consent-required escalations. HEM-06 was designed with the 防災AX (disaster response AI) use case in view, where consent lifecycle management during crisis response is a live regulatory concern.
 
 For collaboration on jurisdiction-specific interaction class requirements: [tomsato@myauberge.jp](mailto:tomsato@myauberge.jp)
 
@@ -145,7 +143,7 @@ For collaboration on jurisdiction-specific interaction class requirements: [toms
 
 **Problem:** AI agents make consequential decisions autonomously, and even when human oversight is invoked, the interaction surface between kernel and human principal is unspecified — leaving room for manipulation, fatigue, undisclosed limitations, and silent divergence.
 
-**Mechanism:** HEM-05 specifies ten normative interaction classes governing the structure, required fields, available decision types, and audit entries for every category of GEC-human interaction. The Human Readiness Score tracks principal capacity continuously. INV-HEM-01 prohibits suppression by any party.
+**Mechanism:** HEM-06 specifies ten normative interaction classes governing the structure, required fields, available decision types, and audit entries for every category of GEC-human interaction. The Human Readiness Score tracks principal capacity continuously. INV-HEM-01 prohibits suppression by any party.
 
 **Output:** A complete, signed, tamper-evident record of every human oversight interaction — not just escalation trigger and decision, but clarification requests, option presentations, limitation disclosures, fatigue detection events, and consent lifecycle events.
 
@@ -170,7 +168,7 @@ For collaboration on jurisdiction-specific interaction class requirements: [toms
 
 ---
 
-## The interaction class model (new in HEM-05)
+## The interaction class model (new in HEM-06)
 
 | Class | Group | Trigger | Blocks execution? | GAR ALE |
 |---|---|---|---|---|
@@ -205,11 +203,11 @@ A hospitality agent operating under MyAuberge K.K.'s ATP booking system attempts
 
 ## How this builds on existing work
 
-**CAP-04 (draft-sato-soos-cap-04)** introduced three new Tier 0-A absolute prohibitions: MANIPULATION, PERFORMED_EMOTION, and BIOMETRIC_SIGNAL_INFERENCE. HEM-05 Section 9 specifies the normative HEM interface for each. The key design: MANIPULATION and PERFORMED_EMOTION violations are CEE-refused before HEM fires — there is no HEM decision type that can authorize them. BIOMETRIC_SIGNAL_INFERENCE is consent-gated — absence of consent triggers HEM-CONSENT. The HRS D5 (Emotional State) dimension is explicitly constrained: biometric signals require consent_scope authorization, behavioral signals do not.
+**CAP-05 (draft-sato-soos-cap-05)** introduced three new Tier 0-A absolute prohibitions: MANIPULATION, PERFORMED_EMOTION, and BIOMETRIC_SIGNAL_INFERENCE. HEM-06 Section 9 specifies the normative HEM interface for each. The key design: MANIPULATION and PERFORMED_EMOTION violations are CEE-refused before HEM fires — there is no HEM decision type that can authorize them. BIOMETRIC_SIGNAL_INFERENCE is consent-gated — absence of consent triggers HEM-CONSENT. The HRS D5 (Emotional State) dimension is explicitly constrained: biometric signals require consent_scope authorization, behavioral signals do not.
 
-**MJWT-02 (draft-sato-soos-mjwt-02)** introduced the consent_scope claim — the normative basis for HEM-CONSENT. The consent_scope.expiry trigger, fail-closed semantics, and APPI Article 17 binding in HEM-CONSENT follow directly from MJWT-02 Section 7.4. HEM-CONSENT is the enforcement surface; MJWT-02 is the credential surface.
+**MJWT-05 (draft-sato-soos-mjwt-05)** introduced the consent_scope claim — the normative basis for HEM-CONSENT. The consent_scope.expiry trigger, fail-closed semantics, and APPI Article 17 binding in HEM-CONSENT follow directly from MJWT-05 Section 7.4. HEM-CONSENT is the enforcement surface; MJWT-05 is the credential surface.
 
-**GAR-03 (draft-sato-soos-gar-03)** established the ALE framework and Session Block structure. ALE-030 through ALE-041 (twelve new ALE types) are registered in Section 21 of this document. The Deliberation Record for HEM-DIV-1 is committed to GAR before any human principal review — the soos.gar.prev_span_hash chain makes post-hoc Deliberation Record fabrication detectable.
+**GAR-07 (draft-sato-soos-gar-07)** established the ALE framework and Session Block structure. ALE-030 through ALE-041 (twelve new ALE types) are registered in Section 21 of this document. The Deliberation Record for HEM-DIV-1 is committed to GAR before any human principal review — the soos.gar.prev_span_hash chain makes post-hoc Deliberation Record fabrication detectable.
 
 ---
 
@@ -221,7 +219,9 @@ A hospitality agent operating under MyAuberge K.K.'s ATP booking system attempts
 
 **Approval fatigue exploitation (§18.13):** An attacker with Class 2 trigger capability can attempt to force a principal into a mandatory rest period at a tactically inconvenient moment by generating rapid low-stakes escalations. Defense: if more than 40% of the fatigue-inducing escalations came from a single agent session in the last 15 minutes, HEM-FAT-1 generates FATIGUE_ATTACK_SUSPECTED rather than enforcing the rest period.
 
-**Formal analysis status:** No formal verification of HEM-05 interaction class completeness has been conducted. This is acknowledged as a gap. Collaboration with academic partners for formal analysis is planned post-Vienna.
+**Decision evidence binding and replay (§12.8, §18.2):** A resolved HEM decision's own signature covers `hem_id`, `principal_id`, `decision`, and `timestamp` — not the action's arguments or target resource directly. Treating that signature alone as proof a human authorized one *specific* action would be an overclaim; the actual binding runs through `hem_id` as a reference into the separately kernel-signed escalation request, and a relying party MUST verify both signatures jointly. Separately, replay of a resolved decision is prevented by the state machine (a decision resubmitted against an already-resolved `hem_id` is rejected with `HEM_ALREADY_RESOLVED`), not by signature verification alone — an earlier revision's text conflated the two.
+
+**Formal analysis status:** No formal verification of HEM-06 interaction class completeness has been conducted. This is acknowledged as a gap. The R10 grading against `draft-reece-wimse-cross-org-delegation-01` (see IETF Working Groups, above) is the closest thing to external review this mechanism has had to date; broader formal analysis with academic partners remains open.
 
 ---
 
