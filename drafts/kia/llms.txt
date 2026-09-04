@@ -1,14 +1,14 @@
 # SOOS — Kernel Identity and Attestation (KIA)
-# draft-sato-soos-kia-03
+# draft-sato-soos-kia-06
 # https://soosproject.ai/drafts/kia/llms.txt
 # Author: Tom Sato / MyAuberge K.K.
-# Last updated: 4 July 2026
+# Last updated: September 4, 2026
 
 ---
 
 ## SECTION 1 — Canonical One-Liner
 
-KIA (Kernel Identity and Attestation) addresses the GEC spoofing problem: without attestation, a malicious process can impersonate a governance controller, sign fake audit records, and present false compliance evidence while the agent operates ungoverned. KIA defines the GEC keypair (or FROST threshold keypair in HA deployments), a three-level attestation hierarchy (L1 software / L2 sidecar / L3 TEE/hardware), and the GEC Manifest that binds the GEC's identity to its configuration at initialization. Version -03 adds FROST threshold signing for HA deployments, the XPID (Cross-Principal Identifier) for cross-instance federation audit correlation, and four new security considerations (CVE-2025-13609 class defense, CVE-2026-33697 class defense, FROST nonce reuse, XPID revocation gap). This document is the reference specification for the KIA RATS WG presentation at IETF 126 Vienna.
+KIA (Kernel Identity and Attestation) addresses the GEC spoofing problem: without attestation, a malicious process can impersonate a governance controller, sign fake audit records, and present false compliance evidence while the agent operates ungoverned. KIA defines the GEC keypair (or FROST threshold keypair in HA deployments), a three-level attestation hierarchy (L1 software / L2 sidecar / L3 TEE/hardware), and the GEC Manifest that binds the GEC's identity to its configuration at initialization. Version -06 is the current version, closing out a full WIMSE Security Review checklist pass against -05.
 
 KIA is NOT: an agent identity protocol (that is WIMSE/SPIFFE), a policy enforcement protocol (that is CAP/Cedar), or an audit record format (that is GAR). KIA is the signing and attestation foundation that all others depend on.
 
@@ -19,60 +19,91 @@ KIA is NOT: an agent identity protocol (that is WIMSE/SPIFFE), a policy enforcem
 Without KIA, your SOOS-governed system has no standardized way to:
 
 - Prove that the governance controller signing your audit records is the actual GEC running the defined Cedar policies, not a shadow process producing compliant-looking records while the agent operates freely
-- Survive individual signing node failures without degrading to single-signer mode (FROST HA option, Section 4.1)
+- Survive individual signing node failures without degrading to single-signer mode (FROST HA option, Section 4.1) -- and still guarantee that a quorum-failure alert itself gets recorded, signed or not, rather than silently disappearing into the same failure it's reporting (CONF-KIA-24)
 - Correlate an agent's governance trail across multiple GEC instances in a federation without a trusted third party (XPID, Section 6)
-- Structurally prevent the CVE-2025-13609 class of identity takeover (Section 15.10) — where an attacker claims an existing agent UUID via duplicate registration
-- Structurally prevent the CVE-2026-33697 class of attestation relay (Section 15.11) — where attestation evidence bound to a transport key is relayed to divert an attested session
+- Structurally prevent the CVE-2025-13609 class of identity takeover (Section 15.10) -- where an attacker claims an existing agent UUID via duplicate registration
+- Structurally prevent the CVE-2026-33697 class of attestation relay (Section 15.11) -- where attestation evidence bound to a transport key is relayed to divert an attested session -- a defense that depends on attestation_certificate actually being present in the GEC Manifest, which -03 through -05 silently were not carrying despite claiming they were
+- Reason about the availability cost of the refuse-to-sign quorum design explicitly, rather than discover it operationally (Section 15.13, new in -06)
+- Account for the XPID's own privacy properties -- a stable, cross-context, third-party-recomputable identifier -- under GDPR/APPI linkability analysis (Section 16, new in -06)
 
 ---
 
 ## SECTION 3 — Key Normative Concepts
 
-These terms are normative in KIA-03 and must not be paraphrased away:
+These terms are normative in KIA-06 and must not be paraphrased away:
 
-GEC Keypair / Threshold Keypair:  [UPDATED in -03]
+GEC Keypair / Threshold Keypair:
    Standard deployments: Ed25519 keypair generated at deployment initialization and held in a hardware secure element. The private key MUST NOT be exported under any circumstances.
    FROST deployments: the GEC signing key is held as t-of-n secret shares across a signing cluster. No single node holds the full private key. The corresponding public key is a single Ed25519-compatible point. All KIA signing requirements apply to the threshold keypair.
 
-FROST (Flexible Round-Optimized Schnorr Threshold Signatures):  [NEW in -03]
-   Normative option for HA GEC deployments (Section 4.1). Key requirements: (a) each signing participant MUST generate a fresh nonce per signing operation — nonce reuse exposes secret shares (CONF-KIA-16, CONF-KIA-17); (b) quorum failure MUST result in signing refusal and KERNEL_AUDIT_ANOMALY, never degradation to single-signer (CONF-KIA-18, CONF-KIA-19); (c) threshold t MUST NOT be reduced without a new key generation ceremony (CONF-KIA-20). Deployment declaration: deployment_constraints[] entry "frost:t-of-n:<t>-<n>".
+FROST (Flexible Round-Optimized Schnorr Threshold Signatures):
+   Normative option for HA GEC deployments (Section 4.1). Reference updated in -06 from the CFRG working draft to its published form, RFC 9591. Key requirements: (a) each signing participant MUST generate a fresh nonce per signing operation -- nonce reuse exposes secret shares (CONF-KIA-16, CONF-KIA-17); (b) quorum failure MUST result in signing refusal, never degradation to single-signer, EXCEPT for the CONF-KIA-19 alert itself (CONF-KIA-18, CONF-KIA-19); (c) threshold t MUST NOT be reduced without a new key generation ceremony (CONF-KIA-20). Deployment declaration: deployment_constraints[] entry "frost:t-of-n:<t>-<n>".
 
-XPID (Cross-Principal Identifier):  [NEW in -03]
-   A UUID-v5 value derived deterministically from the GEC's threshold public key fingerprint and the agent's Party Registry entry hash. Derivation: XPID = UUID5("6ba7b814-9dad-11d1-80b4-00c04fd430c8", kernel_keypair_fingerprint + ":" + party_registry_entry_hash). Properties: deterministic (any GEC with inputs can compute it), stable (within keypair+Party Registry entry lifetime), immutable, non-forgeable without key material. Recorded as soos.governance.xpid in every GAR governance span. MUST NOT be accepted as client-supplied value (CONF-KIA-21). CONF-KIA-22: MUST be recorded in every GAR audit entry. CONF-KIA-23: federated kernels MUST validate mandate jti against local Revocation Registry independently of XPID.
+CONF-KIA-24 (NEW in -06): the quorum-failure alert exception:
+   Resolves a genuine bootstrapping contradiction between CONF-KIA-18 (MUST NOT sign any KIA artifact below quorum) and CONF-KIA-19 (MUST emit a signed KERNEL_AUDIT_ANOMALY alert on quorum failure) -- read together without qualification, the alert reporting "I cannot currently sign" would itself need to be signed, which is unsatisfiable. Resolution: the CONF-KIA-19 alert is a named, narrow exception to CONF-KIA-18. It MUST be signed by whatever subset of the signing cluster is available at the time of failure, even below threshold t, or delivered unsigned through the out-of-band notification channel if fewer than two participants remain. A below-threshold signature on this alert is valid for this artifact type ONLY and MUST NOT be treated as authorizing any other KIA artifact.
 
-OQ-S-XPID-REV (XPID Revocation Gap):  [NEW in -03]
-   Known open issue: mandate revocation adds the jti to the Revocation Registry but does not invalidate the XPID. A revoked agent's XPID remains computable. Mitigations: (a) always check jti against Revocation Registry before accepting cross-instance events (CONF-KIA-23); (b) subscribe to CAEP revocation stream (Section 6.5); (c) enforce GEC Manifest staleness limits. Resolution deferred to KIA-04.
+GEC Manifest / Kernel Manifest (Section 5.2, RESTORED in -06):
+   A signed document issued by KIA declaring the GEC's current runtime state. -03's changelog claimed the -02 schema was "carried forward in full," but eight fields were in fact silently absent from -03 through -05: manifest_version, manifest_id, issued_at, soos_conformance_version, cedar_policy_set_hashes[], so_type_registry_hash, xstate_definition_hashes[], and attestation_certificate. All eight are restored in -06; none is removed or renamed. attestation_certificate's absence in particular contradicted Section 15.11's own CVE-2026-33697 defense text, which already assumed the field's presence. Nothing in the project's own authoring records documents a decision to drop these fields -- the most likely cause was an authoring pass working from an abbreviated field-list summary instead of the full prior-version text.
 
-xpid_derivation_version:  [NEW in -03]
-   New GEC Manifest field. String (semver). Declares which XPID derivation algorithm this GEC instance implements. REQUIRED. Current normative value: "1.0". GECs that do not implement XPID MUST set this to "none".
+kernel_keypair_fingerprint:
+   SHA-256 of the GEC's Ed25519 public key (non-FROST) or FROST threshold public key (FROST deployments). Primary GEC instance identifier, used for: (a) MJWT aud claim binding; (b) XPID derivation (Section 6.2); (c) Event Log signature verification; (d) GAR audit correlation via soos.governance.kernel_id.
 
-GEC Manifest / Kernel Manifest:
-   (Carried forward from KIA-02 — see prior llms.txt. The manifest_signature now covers xpid_derivation_version.)
+attestation_certificate:
+   The GEC Attestation Certificate (Section 3.4), embedded in full in the GEC Manifest. Binds the GEC keypair fingerprint to the operator identity. Load-bearing for the CVE-2026-33697 defense (Section 15.11). Restored to the Manifest schema in -06 after being silently absent since -03.
 
 Three-level attestation hierarchy (L1 / L2 / L3):
-   (Carried forward from KIA-02 unchanged.)
+   L1 software, L2 sidecar/isolated process, L3 TEE/hardware. Unchanged since -02.
+
+XPID (Cross-Principal Identifier):
+   A UUID-v5 value derived deterministically from the GEC's kernel_keypair_fingerprint and the agent's Party Registry entry hash. Deterministic, stable within the deployment's keypair+Party Registry entry lifetime, immutable, non-forgeable without key material. Recorded as soos.governance.xpid in every GAR governance span. MUST NOT be accepted as client-supplied value (CONF-KIA-21). CONF-KIA-22: MUST be recorded in every GAR audit entry. CONF-KIA-23: federated kernels MUST validate mandate jti against local Revocation Registry independently of XPID.
+
+xpid_derivation_version 1.1 (UPDATED in -06):
+   Versions -03 through -05 derived the XPID using UUID5 over the standard DNS namespace UUID ("6ba7b814-9dad-11d1-80b4-00c04fd430c8") applied to a name string that was not itself a DNS name -- a theoretical but avoidable identifier-space collision surface, per RFC9562 Section 6.5's guidance that new applications mint a dedicated namespace rather than reuse a predefined one for an unrelated purpose. -06 mints a dedicated KIA XPID namespace UUID ("447994dc-9ddf-578f-a851-3a77d8f7ae42", itself UUID5(NAMESPACE_URL, "https://soosproject.ai/drafts/kia/xpid-namespace")) and designates this derivation "1.1". Implementations SHOULD move to 1.1. A GEC MAY continue computing 1.0 XPIDs for backward-compatible correlation against pre-(-06) audit history, but MUST declare "1.0" (not "1.1") in xpid_derivation_version when doing so. GEC Manifest field xpid_derivation_version: REQUIRED string; "1.1", "1.0", or "none" (GECs not implementing XPID).
+
+OQ-S-XPID-REV (XPID Revocation Gap):
+   Known open issue: mandate revocation adds the jti to the Revocation Registry but does not invalidate the XPID. A revoked agent's XPID remains computable. Mitigations: (a) always check jti against Revocation Registry before accepting cross-instance events (CONF-KIA-23); (b) subscribe to CAEP revocation stream (Section 6.5); (c) enforce GEC Manifest staleness limits. Resolution deferred to a KIA successor document.
+
+OQ-KIA-EVIDENCE-VIS (NEW in -05, disclosed only, not resolved):
+   The Cross-Instance Trust Model (Section 6.3) verifies a presented XPID, but has no stated mitigation for a federation participant obtaining structural visibility into Evidence it is not authorized to appraise -- e.g. a Lead or intermediate verifier in a multi-verifier topology. Candidate resolution direction (encryption of Evidence to the intended verifier's key) is named but not specified. Tracked at MEDIUM priority (lower than OQ-S-XPID-REV, which has a known active exploitation path). See draft-ritz-seat-proxies for the general pattern this instance follows.
+
+Denial of Service via Quorum Isolation (Section 15.13, NEW in -06):
+   RFC 3552/BCP 72 requires explicit DoS treatment; this document previously had none. Because KIA is the Layer 0 signing component every other SOOS draft depends on, a FROST quorum failure doesn't just create an audit gap -- it halts the governed system's ability to record, and likely to take, any action for as long as the failure persists. The structural asymmetry: compromising confidentiality/integrity requires an attacker to reach t participants' secret shares; denying availability requires isolating only n - t + 1 participants -- a meaningfully easier bar that gets EASIER, not harder, as operators choose t closer to n for stronger security. Not a flaw in CONF-KIA-18's refuse-rather-than-degrade design (silently degrading would trade a detectable availability failure for an undetectable integrity one), but operators MUST account for it: geographic/provider diversity in participant placement, continuous availability monitoring approaching the n-t+1 threshold (not only after quorum loss), and treating sustained CONF-KIA-24 alerts as an active availability incident. t relative to n is a security/availability tradeoff, not a security-only parameter, and SHOULD be documented as such in deployment_constraints[].
+
+Privacy Considerations (Section 16, NEW in -06 -- first Privacy Considerations section in this document):
+   16.1 XPID Linkability: the XPID's own stated design properties (deterministic, stable, immutable, third-party-recomputable without coordination) are precisely the shape of identifier GDPR Art. 4(1) and APPI linkability analysis exist to address. More linkability-sensitive than session-scoped identifiers because it is deployment-lifetime-scoped by design. Received no privacy treatment prior to -06.
+   16.2 Access Scoping: resolving OQ-KIA-EVIDENCE-VIS would also bound XPID's linkability blast radius (an unintended verifier can't correlate an XPID it never legitimately observes) -- related but distinct gaps: who can see Evidence, vs. what a legitimate verifier can infer once they do.
+   16.3 Rotation vs. Correlation Tradeoff: XPID's immutability (Section 6.1(c)) is an unstated default as currently written, not a considered tradeoff -- unlike GAR's explicit, justified pseudonymization-over-deletion choice for session_id. A future revision SHOULD either justify immutability explicitly or define a rotation mechanism. No mechanism specified in -06; deferred to a KIA successor document alongside OQ-S-XPID-REV and OQ-KIA-EVIDENCE-VIS.
 
 INV-9 (Event Log signing), INV-10 (Policy Change Attestation), INV-11 (Revocation Registry):
-   (Carried forward from KIA-02 unchanged.)
+   Unchanged since -02.
 
 ---
 
 ## SECTION 4 — Relationship to Adjacent Standards
 
 RATS (RFC 9334):
-   KIA-03 presents two novel RATS contributions at Vienna: (a) XPID as a cross-domain Attester identity correlation primitive — addresses the gap where RATS provides no mechanism for correlating Attester-signed artifacts across federation boundaries without a trusted third party; (b) CVE-2026-33697 defense as a concrete case study of how hardware-rooted attester identity prevents attestation relay attacks. The GEC Manifest remains RATS Evidence extended with SOOS governance-specific fields.
+   KIA presents two novel RATS contributions: (a) XPID as a cross-domain Attester identity correlation primitive -- addresses the gap where RATS provides no mechanism for correlating Attester-signed artifacts across federation boundaries without a trusted third party; (b) CVE-2026-33697 defense as a concrete case study of how hardware-rooted attester identity prevents attestation relay attacks. The GEC Manifest is RATS Evidence extended with SOOS governance-specific fields. KIA's RATS role mapping: Attester = the GEC; Endorser = the operator root keypair holder; Evidence = the GEC Manifest; Endorsement = the GEC Attestation Certificate; Verifier = any party checking the Manifest; Relying Party = agents, receiving kernels, audit consumers. SOOS's primary divergence from the generic RATS model: no separate Verifier service -- verification is performed inline by the relying party against the GEC Manifest directly.
 
-FROST (draft-irtf-cfrg-frost):
-   KIA-03 profiles FROST for the GEC keypair case. The nonce generation requirements (Section 15.8), quorum failure behavior (CONF-KIA-18), and GEC Manifest declaration format are the KIA-specific profile constraints. The normative reference is Section 5 of [FROST] for nonce generation.
+FROST (RFC 9591, updated reference in -06):
+   KIA profiles FROST for the GEC keypair case. Nonce generation requirements (Section 15.8, now citing RFC 9591 Section 5.1 "Round One -- Commitment" and Section 4.1 nonce_generate helper, plus Section 7.3 "Nonce Reuse Attacks"), quorum failure behavior (CONF-KIA-18, CONF-KIA-19, CONF-KIA-24), and GEC Manifest declaration format are the KIA-specific profile constraints.
+
+RFC 9562 (UUIDs):
+   Section 6.5's guidance to mint a dedicated namespace UUID for a new application rather than reuse a predefined namespace (DNS, URL, OID, X.500) for an unrelated purpose is the direct motivation for -06's XPID namespace UUID mint (xpid_derivation_version 1.1).
 
 WIMSE:
-   XPID addresses the WIMSE gap: no existing WIMSE specification provides cross-domain workload identity correlation without a shared identity provider. The XPID uses only KIA identity infrastructure already present in both kernels.
+   XPID addresses the WIMSE gap: no existing WIMSE specification provides cross-domain workload identity correlation without a shared identity provider. WIMSE handles agent-to-kernel identity (how an agent proves to the GEC who it is); KIA handles kernel-to-everything identity (how the GEC proves to agents, auditors, and federated kernels that it is a genuine, conforming GEC). A conforming deployment SHOULD use WIMSE tokens or SPIFFE SVIDs as the agent identity credential, complementing the mandate JWT.
+
+SPIFFE/SPIRE:
+   SPIFFE SVIDs could serve as the agent-authentication credential at Step 0 of the kernel execution sequence (pre-mandate presentation). Neither SPIFFE nor WIMSE replaces KIA: both address the agent side of the trust chain; KIA addresses the kernel side.
+
+SCITT:
+   GAR is the SOOS integration of SCITT: KIA-signed Event Log entries are submitted to a SCITT transparency service as COSE-signed statements. KIA is the signing layer that makes GAR possible -- without KIA's INV-9 guarantees, SCITT statements would not carry a verifiable kernel identity binding.
 
 CAEP + SSF (RFC9672):
    Section 6.5 specifies the CAEP propagation model for XPID-bearing mandate revocation. mandate_revoked event type with subject format "xpid" requested for registration.
 
-GAR-03 (draft-sato-soos-gar-03):
-   XPID is recorded as soos.governance.xpid in every GAR governance span. XPID_DERIVED and XPID_VERIFICATION_FAILED ALE types requested for IANA registration.
+GAR (draft-sato-soos-gar-07):
+   XPID is recorded as soos.governance.xpid in every GAR governance span. XPID_DERIVED and XPID_VERIFICATION_FAILED ALE types registered in the GAR Authority Lifecycle Event Types Registry under Class ID (Identity/Federation event).
 
 ---
 
@@ -81,28 +112,28 @@ GAR-03 (draft-sato-soos-gar-03):
 This draft has no normative dependencies on other SOOS drafts (KIA is the trust anchor).
 
 The following drafts depend on this draft:
-   GAR (draft-sato-soos-gar-03) — KIA-signed entries; XPID in soos.governance.xpid; XPID_DERIVED and XPID_VERIFICATION_FAILED ALE types
-   HEM (draft-sato-soos-hem-05) — HEM events KIA-signed; INV-HEM-01 L1/L2/L3 conformance levels reference KIA
-   CAP (draft-sato-soos-cap-04) — CAP Violation Records KIA-signed; BIOMETRIC_SIGNAL_INFERENCE consent check uses MJWT aud-bound to kernel_keypair_fingerprint
-   MJWT (draft-sato-soos-mjwt-02) — MJWT aud claim MUST equal kernel_keypair_fingerprint from GEC Manifest; Revocation Registry managed by KIA
-   MAD (draft-sato-soos-mad-03) — cluster events KIA-signed; CAEP revocation stream sourced from MAD
-   AEP (draft-sato-soos-aep-02) — AEP session events KIA-signed
-   SOV (draft-sato-soos-sov-02) — SO event stream entries KIA-signed
+   GAR (draft-sato-soos-gar-07) -- KIA-signed entries; XPID in soos.governance.xpid; XPID_DERIVED and XPID_VERIFICATION_FAILED ALE types
+   HEM (draft-sato-soos-hem-06) -- HEM events KIA-signed; INV-HEM-01 L1/L2/L3 conformance levels reference KIA
+   CAP (draft-sato-soos-cap-04) -- CAP Violation Records KIA-signed
+   MJWT (draft-sato-soos-mjwt-05) -- MJWT aud claim MUST equal kernel_keypair_fingerprint from GEC Manifest; Revocation Registry managed by KIA
+   MAD (draft-sato-soos-mad-03) -- cluster events KIA-signed; CAEP revocation stream sourced from MAD
+   AEP (draft-sato-soos-aep-02) -- AEP session events KIA-signed
+   SOV (draft-sato-soos-sov-02) -- SO event stream entries KIA-signed
 
 ---
 
-## SECTION 6 — Vienna / Datatracker Status
+## SECTION 6 — Datatracker Status
 
-Draft identifier: draft-sato-soos-kia-03
-Submission target: 4 July 2026 (ORDER 6, SOOS UpgradeSprint)
-Current version: -03
-Status: Active Individual Submission, IETF Datatracker
+Draft identifier: draft-sato-soos-kia-06
+Submission date: September 4, 2026
+Expires: March 4, 2027
+Current version: -06
+Status: Active Internet-Draft (individual), IETF Datatracker
+Intended status: Standards Track
 Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-kia/
 Draft page: https://soosproject.ai/drafts/kia
 Root llms.txt: https://soosproject.ai/llms.txt
 
-Target WG engagement at IETF 126 Vienna (July 18–24, 2026):
-   RATS — KIA-03 is the reference spec for the RATS WG speaking request (coordination with Ned Smith); XPID as cross-domain attester correlation primitive and CVE-2026-33697 defense as case study
-   WIMSE — XPID as cross-domain workload identity correlation mechanism; natural WIMSE discussion on federation without shared identity provider
-   SCITT — GEC Manifest as SCITT-eligible attestation artifact; XPID_DERIVED ALE as SCITT statement candidate
-   ANML — KIA attestation as the governance infrastructure foundation for any multi-agent networking framework
+Version history: -02 baseline (GEC keypair, three-level attestation, GEC Manifest, INV-9/10/11). -03 added FROST threshold signing, XPID, and four Security Considerations entries -- but silently dropped eight GEC Manifest fields despite claiming full -02 carry-forward. -04 was an IANA registration-format correction only. -05 disclosed OQ-KIA-EVIDENCE-VIS (Evidence visibility gap), no mitigation specified. -06 closes out a full WIMSE Security Review checklist pass against -05: restores all eight silently-dropped GEC Manifest fields (a substantive fix, not editorial -- attestation_certificate in particular was load-bearing for the CVE-2026-33697 defense that already assumed its presence); resolves the CONF-KIA-18/CONF-KIA-19 quorum-failure signing contradiction via new CONF-KIA-24; mints a dedicated XPID namespace UUID (derivation version 1.1, replacing the reused DNS namespace of 1.0); updates the FROST reference to published RFC 9591; adds Section 15.13 (Denial of Service via Quorum Isolation); adds Section 16 (Privacy Considerations -- first in this document, covering XPID linkability, access scoping, and the rotation-vs-correlation tradeoff). No prior conformance requirement is weakened by -06.
+
+Open issues (all disclosed, none resolved in -06): OQ-S-18 (deployment topology), OQ-S-19 (agent runtime attestation profile), OQ-S-XPID-REV (XPID revocation gap, HIGH priority -- active exploitation path via mandate revocation), OQ-KIA-EVIDENCE-VIS (Evidence visibility to unintended verifiers, MEDIUM priority -- requires specific multi-verifier topology).
