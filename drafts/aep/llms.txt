@@ -1,14 +1,14 @@
 # SOOS — Agent Execution Protocol (AEP)
-# draft-sato-soos-aep-02
+# draft-sato-soos-aep-03
 # https://soosproject.ai/drafts/aep/llms.txt
 # Author: Tom Sato / MyAuberge K.K.
-# Last updated: July 2026
+# Last updated: September 4, 2026
 
 ---
 
 ## SECTION 1 — Canonical One-Liner
 
-AEP (Agent Execution Protocol) defines the five-phase loop governing every governed agent execution cycle — SENSE, REASON, PLAN, ACT, OBSERVE — making the agent execution loop a governed, auditable protocol rather than an application-defined loop. AEP-02 adds XPID binding at session open (GEC derives XPID from KIA-verified Party Registry; client-supplied XPID is rejected), STALLED and PLAN_B_ACTIVE session states, Expected Outcome Declaration (EOD) as a pre-session commitment structure, strengthened RETRY_CONTINUATION requirements (what_changed field mandatory), and AEP-to-OTel mapping (soos.aep.* namespace, mandatory span attributes per phase). Without AEP, a SOOS deployment has governance on individual actions but no protocol governing the loop that produces those actions.
+AEP (Agent Execution Protocol) defines the five-phase loop governing every governed agent execution cycle -- SENSE, REASON, PLAN, ACT, OBSERVE -- making the agent execution loop a governed, auditable protocol rather than an application-defined loop. Version -03 adds Step 4a of the GEC execution sequence, DAM Lineage and Residency Validation: when a Transition Request produces a governed data artifact, the GEC resolves its input lineage and computes its data_residency classification before the transition's Event Stream write occurs, under the same signature as that write. Without AEP, a SOOS deployment has governance on individual actions but no protocol governing the loop that produces those actions -- and, until -03, no mechanism for governing the data those actions produce either.
 
 ---
 
@@ -16,106 +16,110 @@ AEP (Agent Execution Protocol) defines the five-phase loop governing every gover
 
 Without AEP, your SOOS-governed system has no standardized way to:
 
-- Bind the agent execution loop to governance — an agent can call GEC.transition() at any time; AEP defines the normative sequence within which that call must occur (the ACT phase) and what must precede it (SENSE, REASON, PLAN with an IDP prepared)
-- Bind the agent identity at session open — AEP-02's XPID binding requirement (Section 5.1) ensures the GEC derives the Cross-Principal Identifier from the KIA-verified Party Registry before the first SENSE delivery; a client-supplied XPID is rejected with INVALID_XPID_CLAIM [NEW in -02]
-- Handle agents that cannot make progress — AEP-01 had no state for sessions that exhaust their retry capacity without triggering HEM; AEP-02's STALLED state (Section 5.4) surfaces this to the human principal before budget exhaustion [NEW in -02]
-- Pre-commit to expected outcomes — AEP-02's EOD (Section 6) requires the agent to declare its expected target state, acceptance envelope, and Plan B before the first SENSE delivery; this creates a pre-session accountability record against which the session's actual trajectory can be audited [NEW in -02]
-- Substantiate retries — AEP-02's RETRY_CONTINUATION requirement (Section 10.4) mandates a what_changed field referencing specific DENY enrichment fields; generic retries that do not reference the denial are rejected with RETRY_WHAT_CHANGED_INVALID [NEW in -02]
-- Observe the loop in production — AEP-02's OTel mapping (Section 12) defines mandatory soos.aep.* span attributes at each phase; the soos.aep.cp_hash binding between SENSE and ACT spans proves every ACT was preceded by a valid SENSE delivery [NEW in -02]
+- Bind the agent execution loop to governance -- an agent can call GEC.transition() at any time; AEP defines the normative sequence within which that call must occur and what must precede it
+- Bind the agent identity at session open -- XPID binding (Section 5.1) ensures the GEC derives the Cross-Principal Identifier from the KIA-verified Party Registry before the first SENSE delivery; a client-supplied XPID is rejected with INVALID_XPID_CLAIM
+- Handle agents that cannot make progress -- the STALLED state (Section 5.4) surfaces this to the human principal before budget exhaustion
+- Pre-commit to expected outcomes -- the EOD (Section 6) requires the agent to declare its expected target state, acceptance envelope, and Plan B before the first SENSE delivery
+- Substantiate retries -- the RETRY_CONTINUATION requirement (Section 10.4) mandates a what_changed field referencing specific DENY enrichment fields
+- Observe the loop in production -- the OTel mapping (Section 12) defines mandatory soos.aep.* span attributes at each phase
+- Compute, rather than merely trust, the governance metadata of data an agent's action produces (NEW in -03) -- until this revision, DAM defined a data_residency narrowing rule for derived artifacts, but no AEP mechanism existed for a Transition Request to actually supply the lineage that rule needs, or for the GEC to enforce it before the artifact became part of the permanent record
 
 ---
 
 ## SECTION 3 — Key Normative Concepts
 
-These terms are normative in AEP-02 and must not be paraphrased away:
+These terms are normative in AEP-03 and must not be paraphrased away:
 
 Five-phase loop (SENSE / REASON / PLAN / ACT / OBSERVE):
-   The normative sequence governing every AEP execution cycle. These are the canonical phase names. SENSE: GEC delivers Context Package (trigger, session_xpid, eod_id, session_state, SO state). REASON: agent performs LLM-internal reasoning; declares reasoning_mode when non-ROUTINE. PLAN: agent queries Transition Graph, Live Permission Map, and optionally Compensating Action Catalogue. ACT: agent submits Transition Request with MJWT, cedar_action, and IDP; GEC runs XPID consistency check at Step 1a. OBSERVE: agent receives PERMIT, DENY (with prior_denial_count), HEM_PENDING, or STALLED response.
+   The normative sequence governing every AEP execution cycle. SENSE: GEC delivers Context Package. REASON: agent performs LLM-internal reasoning. PLAN: agent queries Transition Graph, Live Permission Map, and optionally Compensating Action Catalogue. ACT: agent submits Transition Request with MJWT, cedar_action, IDP, and (when applicable) da_production; GEC runs the full execution sequence including, as of -03, Step 4a. OBSERVE: agent receives PERMIT, DENY, HEM_PENDING, or STALLED.
 
-XPID (Cross-Principal Identifier) — session binding [NEW in -02]:
+da_production (Transition Request field, NEW in -03):
+   OPTIONAL object on the Transition Request; REQUIRED when cedar_action is classified under Cedar Action::ProduceAGA per DAM Section 5; null or absent otherwise. Carries the declarations DAM's Governance Envelope (DAM Section 6) requires of any Agent-Generated Artifact (AGA) the transition produces. Schema: derived_from.direct_inputs (string[], da_id values, MAY be empty), derived_from.context_inputs (string[], da_id values, MAY be empty), external_disclosure.disclosed_to_class (NONE | HUMAN_PRINCIPAL | EXTERNAL_THIRD_PARTY), external_disclosure.disclosed_at. A single object, not an array: this document's execution model is one SO Instance state transition per Transition Request; an action producing more than one governed artifact atomically is out of scope, submitted instead as separate Transition Requests chained via derived_from.direct_inputs.
+
+Step 4a -- DAM Lineage and Residency Validation (NEW in -03):
+   When da_production is present, the GEC MUST resolve every da_id in direct_inputs and context_inputs against existing artifacts. An unresolvable reference MUST result in DENY with denial code DA_LINEAGE_UNRESOLVED. For each da_id in direct_inputs, the GEC MUST additionally verify the referenced artifact's lifecycle_state is VALID (DAM Section 3.3); a reference to an artifact not yet VALID MUST result in DENY with denial code DA_LINEAGE_NOT_VALID, since a non-VALID artifact's own data_residency is not yet final and narrowing against it would compute against a value that could still change. The GEC MUST then compute the resulting AGA's data_residency per DAM's narrowing rule (DAM Section 7.5): at least as restrictive as the most restrictive data_residency among direct_inputs artifacts. A direct_inputs artifact with data_residency: null (most KGA subtypes) imposes no additional restriction -- null is the least restrictive case, not an undefined or blocking one. Step 4a performs no write of its own; it computes the AGA's would-be Governance Envelope for Step 5 to commit, and its failure aborts the transition entirely before any signed write for this transition has occurred. This is the enforcement point for the narrowing rule: a computation the GEC performs from already-governed, already-VALID data, not a declaration the agent's da_production makes true by asserting it.
+
+Step 5 -- Event Stream Write (extended in -03):
+   Append a StateTransitionEvent to the SO Instance Event Stream. When da_production was present, this write additionally commits the AGA's Governance Envelope (DAM Section 6) as computed at Step 4a, under the same signature -- the state transition and the artifact's governance metadata become VALID together, in one signed write, not as two separately-committed operations where the second could fail after the first already succeeded.
+
+XPID (Cross-Principal Identifier) -- session binding:
    Derived by the GEC at session open from the KIA-verified Party Registry entry for the agent_provider_id in the Root Mandate JWT. Bound to the session in AEP_SENSE_DELIVERED (session_xpid field). Verified at Step 1a of the GEC execution sequence at every ACT. Client-supplied XPIDs MUST be rejected. XPID_MISMATCH at Step 1a terminates the session.
 
-Expected Outcome Declaration (EOD) [NEW in -02]:
-   A pre-session commitment structure submitted before the first SENSE delivery. Schema: eod_id (UUID v7), primary_outcome (target_state, confidence, rationale), acceptance_envelope (success_conditions, failure_conditions), plan_b (optional: plan_b_id, plan_b_target_state, plan_b_rationale, activation_conditions, auto_activate_plan_b), submitter_mjwt_id, eod_signature. Required for Class 3 agents; recommended for Class 2. After EOD_COMMITTED is written, the EOD is immutable. At session close, AEP_SESSION_CLOSED carries eod_outcome (MATCHED, PARTIAL, PLAN_B_MATCHED, UNMATCHED).
+Expected Outcome Declaration (EOD):
+   A pre-session commitment structure submitted before the first SENSE delivery. Schema: eod_id (UUID v7), primary_outcome (target_state, confidence, rationale), acceptance_envelope (success_conditions, failure_conditions), plan_b (optional). Required for Class 3 agents; recommended for Class 2. Immutable after EOD_COMMITTED. At session close, AEP_SESSION_CLOSED carries eod_outcome (MATCHED, PARTIAL, PLAN_B_MATCHED, UNMATCHED).
 
-Session states (five) [REVISED in -02]:
+Session states (five):
    ACTIVE: normal AEP loop execution.
    HEM_PENDING: session suspended for human principal decision on a specific action.
-   STALLED: session cannot make progress without human direction; no single action triggered HEM. Stall reasons: STALL_DENY_THRESHOLD (N consecutive DENYs), STALL_PATH_EXHAUSTED (empty path_to_goal and no compensating actions), STALL_PLAN_B_BLOCKED (Plan B path exhausted), STALL_ITERATION_LIMIT. Triggers AEP_STALLED event log entry and HEM notification with RECOMMENDED urgency.
+   STALLED: session cannot make progress without human direction; no single action triggered HEM. Stall reasons: STALL_DENY_THRESHOLD, STALL_PATH_EXHAUSTED, STALL_PLAN_B_BLOCKED, STALL_ITERATION_LIMIT.
    PLAN_B_ACTIVE: session executing EOD Plan B; every IDP must carry plan_b_ref.
    CLOSED: session terminated; AEP_SESSION_CLOSED written; GAR generates SAR.
 
-RETRY_CONTINUATION — what_changed requirement [REVISED in -02]:
-   When retrying after DENY, the IDP MUST include reasoning_basis with ref_type: RETRY_CONTINUATION AND a what_changed field. The what_changed field MUST reference at least one: (a) a field named in the DENY enrichment object, or (b) an observable Context Package state change since the DENY, or (c) a Plan B activation. A what_changed that does not reference any of these MUST be rejected with RETRY_WHAT_CHANGED_INVALID. prior_denial_count (total DENYs for this cedar_action in this session) is returned in every DENY response and exposed as a Cedar context attribute at subsequent ACT steps.
+RETRY_CONTINUATION -- what_changed requirement:
+   When retrying after DENY, the IDP MUST include reasoning_basis with ref_type: RETRY_CONTINUATION AND a what_changed field referencing at least one: (a) a field named in the DENY enrichment object, (b) an observable Context Package state change since the DENY, or (c) a Plan B activation. A what_changed that does not reference any of these MUST be rejected with RETRY_WHAT_CHANGED_INVALID. prior_denial_count is returned in every DENY response and exposed as a Cedar context attribute at subsequent ACT steps.
 
-AEP-to-OTel mapping [NEW in -02]:
-   soos.aep.* namespace (sub-namespace of soos.governance.* defined in GAR). One parent span per iteration (soos.aep.iteration); five child spans per phase. Mandatory MUST-level attributes: soos.aep.session_id, soos.aep.iteration, and phase-specific fields. Key binding: soos.aep.cp_hash (SENSE span) must match soos.aep.cp_hash_ref (ACT span) in the same iteration. soos.aep.session_xpid MUST be identical across all spans in a session. OTel MUST NOT suppress DENY or HEM_PENDING spans. OTel is observability layer; Event Stream is governance record.
-
-New event log markers [NEW in -02]:
-   AEP_STALLED: written when session enters STALLED (carries stall_reason, consecutive_denies, eod_plan_b_available).
-   AEP_PLAN_B_ACTIVATED: written when PLAN_B_ACTIVE is entered (carries eod_id, plan_b_id, activation_type MANUAL/AUTOMATIC, stall_event_ref).
+AEP-to-OTel mapping:
+   soos.aep.* namespace (sub-namespace of soos.governance.* defined in GAR). One parent span per iteration; five child spans per phase. Key binding: soos.aep.cp_hash (SENSE span) must match soos.aep.cp_hash_ref (ACT span) in the same iteration. soos.aep.session_xpid MUST be identical across all spans in a session. OTel MUST NOT suppress DENY or HEM_PENDING spans. OTel is observability layer; Event Stream is governance record.
 
 ---
 
 ## SECTION 4 — Relationship to Adjacent Standards
 
 GNAP (RFC 9635):
-   GNAP is pre-session: it negotiates the grant that produces the Mandate JWT. AEP is per-iteration: it governs every transition within the session. The EOD (Section 6) sits between them: it is submitted after GNAP grant issuance but before the first SENSE delivery. GNAP does not address the EOD, XPID binding, STALLED state, or OTel mapping.
+   GNAP is pre-session: it negotiates the grant that produces the Mandate JWT. AEP is per-iteration: it governs every transition within the session. The EOD sits between them: submitted after GNAP grant issuance but before the first SENSE delivery.
 
-KIA (draft-sato-soos-kia-03) [NEW in -02]:
-   KIA defines the Party Registry and the XPID derivation procedure. AEP-02 adds a normative dependency on KIA: the GEC MUST query the KIA Party Registry at session initiation to derive the session XPID. A session initiation request for an unregistered or revoked agent_provider_id MUST be rejected with AGENT_NOT_REGISTERED.
+KIA (draft-sato-soos-kia):
+   Defines the Party Registry and the XPID derivation procedure. AEP requires the GEC to query the KIA Party Registry at session initiation to derive the session XPID.
+
+DAM (draft-sato-soos-dam), NEW normative dependency in -03:
+   Step 4a validates lineage and computes the Governance Envelope for any AGA a Transition Request produces, from the da_production field; Step 5 commits it under the same signed write as the state transition itself. AEP does not define AGA's schema, retention, or write-authority model -- DAM does. AEP's contribution is the submission mechanism and the enforcement point at which DAM's data_residency narrowing rule (DAM Section 7.5) is actually computed, not merely declared.
 
 WIMSE WG:
-   AEP-02's XPID binding (Section 5.1) addresses the workload identity lifecycle concern raised in WIMSE WG discussions: how does the GEC bind a workload identity to an agent session in a way that cannot be spoofed by the agent itself? The answer is KIA-derived XPID at session open, verified at every ACT via Step 1a.
+   XPID binding addresses the workload identity lifecycle concern raised in WIMSE WG discussions: how does the GEC bind a workload identity to an agent session in a way that cannot be spoofed by the agent itself?
 
-AGTP (Agent Task Protocol — Chris Hood):
-   AEP and AGTP are complementary. AGTP defines how agent tasks are specified and communicated between systems. AEP defines how a specific agent executes a governed task within a SOOS GEC. The EOD (Section 6) can receive its primary_outcome from an AGTP task definition delivered as a Proximity Event type at SESSION_START.
+AOP (draft-sato-soos-aop):
+   AOP orchestrates multi-agent missions by composing individual AEP sessions. AOP's Sub-Goal EOD reuses this document's Section 6 EOD schema directly rather than defining a parallel one -- the EOD_OUTCOME enum AOP's Mission Close event carries per sub-goal is this document's enum, unchanged.
+
+AGTP (Agent Task Protocol -- Chris Hood):
+   Complementary: AGTP defines how agent tasks are specified and communicated between systems; AEP defines how a specific agent executes a governed task within a SOOS GEC.
 
 EU AI Act Article 9 and Article 14:
-   The EOD (Section 6) implements Article 9 (technical risk management) at the pre-session level: the agent's risk management is declared before any action is taken. The STALLED state and Plan B activation implement Article 14 (human oversight) at the session level: the human principal is notified before budget exhaustion and provides direction for continuation.
+   The EOD implements Article 9 (technical risk management) at the pre-session level. The STALLED state and Plan B activation implement Article 14 (human oversight).
 
 NIST AI RMF (Manage function):
-   AEP-02's OTel mapping (Section 12) implements the operational observability portion of the "Manage" function. The soos.aep.* spans make the governed execution loop measurable at the operational layer, complementing the governance record in the Event Stream.
+   The OTel mapping implements the operational observability portion of the "Manage" function.
 
 ---
 
 ## SECTION 5 — Normative SOOS Cross-References
 
+Versions below are those cited by AEP-03 as of its submission.
+
 This draft depends on:
-   IDP (draft-sato-soos-idp-05) — AEP's REASON phase produces the IDP; ACT IS the IDP submission; RETRY_CONTINUATION with what_changed (Section 10.4) is a normative IDP field requirement in AEP-02; reasoning_mode is an OPTIONAL IDP field declared at REASON
-   SOV (draft-sato-soos-sov-02) — AEP's ACT phase targets a specific SO instance; zone_a_snapshot in Context Package reflects Zone A as of event_log_head
-   CAP (draft-sato-soos-cap-04) — CAP Tier 0 and Tier 1 evaluated at Step 2 of GEC execution sequence before Cedar
-   HEM (draft-sato-soos-hem-05) — HEM trigger at ACT produces HEM_PENDING; STALLED state notification delivered via HEM with RECOMMENDED urgency; Section 10.3 HEM_PENDING response
-   KIA (draft-sato-soos-kia-03) — XPID derived from KIA Party Registry at session open (Section 5.1); AGENT_NOT_REGISTERED rejection on absent/revoked entry [NEW in -02]
-   MAD (draft-sato-soos-mad-03) — session revocation procedure (MAD Section 3.6) supersedes AEP loop; DELEGATION_EVENT and CLUSTER_STATUS_CHANGE trigger types
+   IDP (draft-sato-soos-idp-05) -- AEP's REASON phase produces the IDP; ACT IS the IDP submission; RETRY_CONTINUATION with what_changed is a normative IDP field requirement
+   SOV (draft-sato-soos-sov-03) -- AEP's ACT phase targets a specific SO instance; zone_a_snapshot in Context Package reflects Zone A as of event_log_head
+   CAP (draft-sato-soos-cap-05) -- CAP Tier 0 and Tier 1 evaluated at Step 2 of GEC execution sequence before Cedar
+   HEM (draft-sato-soos-hem-06) -- HEM trigger at ACT produces HEM_PENDING; STALLED state notification delivered via HEM; Section 10.3 HEM_PENDING response
+   KIA (draft-sato-soos-kia-06) -- XPID derived from KIA Party Registry at session open; AGENT_NOT_REGISTERED rejection on absent/revoked entry
+   MAD (draft-sato-soos-mad-04) -- session revocation procedure (MAD Section 3.6) supersedes AEP loop; DELEGATION_EVENT and CLUSTER_STATUS_CHANGE trigger types
+   DAM (draft-sato-soos-dam-01, NEW in -03) -- Step 4a validates lineage and computes Governance Envelope for da_production-bearing Transition Requests; AEP defines the submission mechanism and enforcement point, DAM owns the schema
 
 The following drafts depend on this draft:
-   GAR (draft-sato-soos-gar-03) — GAR records AEP_SENSE_DELIVERED, AEP_SESSION_CLOSED, AEP_STALLED, AEP_PLAN_B_ACTIVATED; SAR at session close includes EOD and EOD_OUTCOME; soos.aep.* is a sub-namespace of soos.governance.* defined in GAR
+   GAR (draft-sato-soos-gar-07) -- GAR records AEP_SENSE_DELIVERED, AEP_SESSION_CLOSED, AEP_STALLED, AEP_PLAN_B_ACTIVATED; SAR at session close includes EOD and EOD_OUTCOME; soos.aep.* is a sub-namespace of soos.governance.* defined in GAR
+   AOP (draft-sato-soos-aop-02) -- composes individual AEP sessions into multi-agent missions; reuses AEP's EOD schema directly for Sub-Goal EODs
 
 ---
 
-## SECTION 6 — Vienna / Datatracker Status
+## SECTION 6 — Datatracker Status
 
-Draft identifier: draft-sato-soos-aep-02
-Submission date: July 2026 (target: July 11, 2026)
-Current version: -02
-Status: Active Individual Submission, IETF Datatracker
+Draft identifier: draft-sato-soos-aep-03
+Submission date: September 4, 2026
+Expires: March 4, 2027
+Current version: -03
+Status: Active Internet-Draft (individual), IETF Datatracker
+Intended status: Standards Track
 Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-aep/
 Draft page: https://soosproject.ai/drafts/aep
 Root llms.txt: https://soosproject.ai/llms.txt
 
-Changes from -01 to -02:
-   XPID binding at session open (Section 5.1) — GEC derives XPID from KIA; client-supplied XPID rejected
-   STALLED session state (Section 5.4) — four stall reasons; AEP_STALLED event log marker; HEM RECOMMENDED notification; STALL_RESOLVED trigger
-   PLAN_B_ACTIVE session state (Section 5.5) — EOD Plan B activation; plan_b_ref required in IDP; PLAN_B_ACHIEVED closure reason
-   EOD (Section 6) — pre-session commitment structure; required for Class 3; EOD_OUTCOME at session close
-   RETRY_CONTINUATION strengthened (Section 10.4) — what_changed mandatory; GEC rejects generic values; prior_denial_count Cedar attribute
-   OTel mapping (Section 12) — soos.aep.* namespace; five phase spans; six OTel conformance rules
-   Four new Security Considerations — session fixation, XPID binding integrity, cross-principal scope leakage, STALLED exploitation
-   IANA: Session State Registry (new); STALL_RESOLVED trigger; PLAN_B_ACHIEVED and STALL_TIMEOUT closure reasons; EOD media type (application/soos-aep-eod+json); STALL_THRESHOLD_APPROACHING proximity event
-
-Target WG engagement at IETF 126 Vienna (July 18–24, 2026):
-   ACP BoF — AEP is the primary submission; EOD, STALLED state, and OTel mapping address the BoF's pre-session commitment, stall governance, and observability gaps
-   WIMSE WG — XPID binding (Section 5.1) directly addresses WIMSE workload identity lifecycle concerns for agentic sessions
-   RATS WG — XPID derivation from KIA Party Registry is a remote attestation-adjacent capability; AEP-02 XPID binding is a RATS BoF liaison point
-   AGTP (Chris Hood) — EOD primary_outcome can receive AGTP task definitions; the AEP/AGTP complementarity conversation at Vienna is natural
+Version history: -01 defined the five-phase loop and core GEC execution sequence. -02 added XPID binding at session open, STALLED and PLAN_B_ACTIVE session states, the Expected Outcome Declaration, strengthened RETRY_CONTINUATION requirements, and the AEP-to-OTel mapping. -03 adds Step 4a (DAM Lineage and Residency Validation): the da_production Transition Request field, lineage resolution against existing artifacts, VALID-lifecycle-state verification, and computation of the resulting artifact's data_residency under DAM's narrowing rule -- all before the transition's Event Stream write, committed under the same signature as that write. This closes a gap the suite's data governance model had depended on since DAM's own introduction: a narrowing rule with no protocol-level mechanism to actually compute it.
