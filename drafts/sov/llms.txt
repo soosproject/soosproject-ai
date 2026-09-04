@@ -1,141 +1,138 @@
 # SOOS — Sovereign Object (SOV)
-# draft-sato-soos-sov-02
+# draft-sato-soos-sov-03
 # https://soosproject.ai/drafts/sov/llms.txt
 # Author: Tom Sato / MyAuberge K.K.
-# Last updated: July 7, 2026
+# Last updated: September 4, 2026
 
 ---
 
 ## SECTION 1 — Canonical One-Liner
 
-The Sovereign Object is to agentic AI what the IP packet is to the internet — the universal primitive that makes ecosystem-scale deployment possible.
-
-SOV defines the Sovereign Object (SO): the stateful, policy-governed, causally ordered entity that serves as the universal binding target for agent authority in SOOS. Every MJWT is scoped to a Sovereign Object instance. Every GEC-mediated state transition acts on a Sovereign Object. Every governance record in GAR is associated with a Sovereign Object. Without the SO, SOOS authorization is API-level; with the SO, authorization is object-level — precisely bounded, cryptographically traceable, and regulatorily inspectable at the instance level.
-
-SOV is NOT a database schema, a credential format, or an application data model. It defines a protocol-level entity type with a kernel-enforced state machine, a Cedar-readable attribute namespace, a tamper-evident event history, and a lifecycle that includes cryptographic erasure.
-
-Version -02 adds: the SOV-02 Subtype Model for structured SO Type composition; the Standing Plan Object (SPO) as the first normative subtype, carrying declarative operational plans as first-class Sovereign Objects; Mission Plan SO and Mission Status SO for multi-agent DAG-structured task orchestration; strengthened Event Stream integrity requirements including mandatory `soos.governance.kernel_id` per entry; OpenTelemetry integration; SO Type Registry governance with IANA registration procedure; SO Type code namespace (`soos/`, `ietf/`) reservation; SPO media type registration.
+The Sovereign Object (SO) is the typed, stateful, policy-carrying primitive that every other SOOS governance draft assumes but none defines: the governed resource that agent authority is bound to, that Cedar policy is evaluated against, and that the audit record references. SOV defines its five-layer structure (Identity, State, Event Stream, Typed Graph, Attachment Index), its Zone A/Zone B boundary model, its five-phase lifecycle, its SO Type system, its Cedar policy context model, and the binding model by which a Mandate JWT binds an agent to a specific SO instance. Version -03 is the current version, closing out a WIMSE Security Review checklist pass against -02.
 
 ---
 
 ## SECTION 2 — Problem Statement
 
-Without SOV, your SOOS-governed deployment has no standardized way to:
+Without SOV, your SOOS-governed system has no standardized way to:
 
-- Bind agent authority to a specific object instance rather than an API endpoint — an agent authorized to "modify booking records" is less useful than an agent authorized to act on Booking Object instance SO-uuid-1234 in state CONFIRMED with a defined state_constraint
-- Maintain causal ordering of all state transitions — ensuring every SO state change has a complete, non-falsifiable predecessor chain, making regulatory inspection of "what happened to this object and why" possible without reconstruction
-- Enforce GDPR cryptographic erasure at the object level — SOV defines how an SO instance can be cryptographically erased (Zone B encryption keys destroyed, personal data rendered inaccessible) while preserving the structural audit record
-- Resolve binding ambiguity — before SOV, WIMSE credentials existed but had no standardized object to bind authority to; the "WIMSE identifies the workload; MJWT is the authorization permit" relationship requires an SO as the named target
-- Govern agents at plan scope — before SPO (SOV-02), there was no standardized way to carry a declarative operational plan as a first-class Sovereign Object; agent authorities were scoped per-mandate rather than per-plan, making episode-level governance and audit impossible
-- Orchestrate multi-agent task graphs with dependency enforcement — before Mission Plan SO (SOV-02), there was no kernel-enforced DAG structure ensuring agents respect sub-goal dependency order
+- Bind agent authority to a specific, stateful, traceable resource rather than an abstract action type -- "authorized to perform action X" has no normative referent without it; any resource will do, and no audit trail is structurally required
+- Guarantee that Cedar evaluation never runs against SO state or IDP intent attributes populated on the assumption of an already-validated principal/mandate relationship the pipeline hasn't actually confirmed yet -- SOV-02's evaluation order allowed exactly this, and a Stage 2 test trace confirmed the consequence directly: Cedar reached PERMIT against an MJWT with an invalid signature before a later layer caught it
+- Prevent personal data from entering the kernel-authoritative audit surface -- Zone A MUST NOT contain personal data (INV-ZA-1); Zone B holds it instead, is irreversibly erasable, and is excluded from FAIP analytics by the same invariant
+- Extend a governed resource type through inheritance while guaranteeing a parent type's Cedar prohibitions can never be overridden by a subtype (the SOV-02 Subtype Model)
+- Make an entire operational plan itself a governed, auditable resource -- the Standing Plan Object (SPO) -- rather than leaving disaster-response or other plan-scope authority ungoverned between individual agent actions
+- Satisfy GDPR Article 17 / APPI Article 19 erasure obligations while preserving the complete audit trail retention law may separately require -- Zone B Cryptographic Erasure destroys encryption keys, not records; Zone A and the Event Stream survive
 
 ---
 
 ## SECTION 3 — Key Normative Concepts
 
-These terms are normative in SOV-02 and must not be paraphrased away:
+These terms are normative in SOV-03 and must not be paraphrased away:
 
 Sovereign Object (SO):
-   The stateful, policy-governed entity that serves as the binding target for all SOOS agent authority. An SO instance has: a UUID v7 so_id, a current state (from the SO Type's defined state space), a causally-ordered GEC-signed Event Stream, Cedar policies governing valid transitions, and a GEC that mediates all transitions. No agent acts on an SO directly; all transitions are GEC-mediated.
+   A causally ordered, policy-governed, typed, living document that evolves through a predefined finite state space under GEC authority. The unit of governance in the SOOS protocol family.
 
-SO Type:
-   The template that defines a class of Sovereign Objects: the valid state space, the Cedar policies governing transitions, the HEM escalation classes that apply, the jurisdiction configuration for CAP, and the Zone A schema. An SO instance is always an instance of a registered SO Type. MyAuberge K.K.'s ActivityBookingObject (`atp/booking-object/1.0`) is the reference SO Type implementation.
+Five-layer structure:
+   Identity Layer (Layer 1): so_id (UUID v7), so_type_id, human_principal_id, gec_id -- immutable identity.
+   State Layer (Layer 2): current_state, current_phase, state_entered_at -- current position in the state machine.
+   Event Stream: append-only, GEC-signed, causally chained via prior_event_id; soos.governance.kernel_id on every entry.
+   Typed Graph: materialized view over Event Stream history.
+   Attachment Index: signed references to Zone B content.
 
-SOV-02 Subtype: [NEW in -02]
-   An SO Type that extends a registered parent SO Type via the SOV-02 Subtype Model. A subtype inherits the parent's state machine (and may add states and transitions) and inherits the parent's Cedar policy set (evaluated before subtype Cedar policy; parent DENY cannot be overridden). A subtype may add Zone A fields beyond those declared by the parent. Inheritance chain depth is capped at three levels recommended, five absolute maximum.
+Zone A / Zone B boundary:
+   Zone A is kernel-authoritative: the GEC is the sole writer; no application may write Zone A fields without a Cedar PERMIT. Zone A MUST NOT contain personal data (INV-ZA-1) -- it holds only identifiers, state references, and policy-relevant metadata. Zone B is application-managed content referenced from Zone A via a signed Attachment Index, content-hash-verified on every access. Zone B holds personal data and is irreversibly erased at Cryptographic Erasure (destroying encryption keys, not deleting records) while Zone A and the Event Stream are retained for audit -- satisfying GDPR Art. 17 / APPI Art. 19 while preserving the audit trail.
 
-Standing Plan Object (SPO): [NEW in -02]
-   A normative SOV-02 subtype (`soos/standing-plan-object/1.0`) that carries a declarative operational plan as a first-class Sovereign Object. An SPO instance specifies: scope_constraints (geographic, SO type, agent role, temporal, delegation depth), cedar_bundle_ref (content-addressed Cedar policy bundle), cap_rrs_catalog_ref (CAP-RRS profile for this plan), and idp_validation_ref (IDP structural validation schema). The SPO state machine: DRAFT → APPROVED → ACTIVE → COMPLETED / REVOKED / SUSPENDED. All transitions that change operative status require HEM; spo.activate (APPROVED → ACTIVE) does not.
+SOV-02 Subtype Model (Section 5.5, unchanged in -03):
+   A registered SO Type may extend a parent type, inheriting its state machine and Cedar prohibitions while adding subtype-specific Zone A fields and transitions. A parent DENY MUST NOT be overridden by a subtype policy.
 
-Mission Plan SO: [NEW in -02]
-   A normative root SO Type (`soos/mission-plan/1.0`) that represents a multi-step operational task as a directed acyclic graph (DAG) of sub-goals. Each DAG node references a child SO Instance. The GEC enforces dependency order: a child SO's agent mandate is not issued until all dependency nodes are in terminal success state. State machine: PLANNING → APPROVED → EXECUTING → COMPLETED / FAILED / REVOKED.
+Standing Plan Object (SPO):
+   soos/standing-plan-object/1.0. The only currently-registered normative SOOS subtype under the Subtype Model. A declarative operational plan as a first-class Sovereign Object: scope_constraints (geographic, SO type, agent role, temporal, delegation depth), cedar_bundle_ref (content-addressed Cedar policy bundle), cap_rrs_catalog_ref (CAP-RRS profile), idp_validation_ref (IDP structural validation schema for all plan IDPs), activation_at. Governs agents at plan scope rather than instance scope.
 
-Mission Status SO: [NEW in -02]
-   A normative root SO Type (`soos/mission-status/1.0`) that carries the live execution state of an active Mission Plan SO. It is a GEC-maintained materialized view: the GEC updates it atomically with each Mission Plan SO Event Stream entry. Agents MUST NOT write to Mission Status SO Zone A fields. Divergence between Mission Status SO and Mission Plan SO Event Stream triggers HEM_CLASS_GOVERNANCE_INCONSISTENCY.
+Mission Plan SO / Mission Status SO -- REMOVED from this document in -03:
+   soos/mission-plan/1.0 and soos/mission-status/1.0 were normatively defined here in -02, duplicating subtypes AOP also normatively defines. AOP's own text states plainly these are AOP subtypes; AOP's DAG model is materially more complete (typed SEQUENTIAL/PARALLEL/CONDITIONAL dependency edges, deadline tracking, critical-path annotation, well-formedness validation) than -02's had been. -03 removes the duplicate definition entirely and defers to AOP as sole owner, including AOP's dependency-type vocabulary. Do not implement these subtypes from this document -- see draft-sato-soos-aop.
 
-kernel_id: [NEW in -02]
-   The GEC's globally unique, cryptographically stable identifier bound to the GEC's Governance Identity Key (GIK). Recorded in every Event Stream entry as `soos.governance.kernel_id`. Enables cross-entry verification that all entries in an Event Stream were produced by the same GEC instance. Defined in KIA (draft-sato-soos-kia-03); referenced here as a mandatory Event Stream field.
+Cedar Policy Evaluation Order (Section 9.3, UPDATED in -03 -- real behavior change):
+   The GEC MUST evaluate in this order:
+   (1) Mandate JWT verification, full 13-step protocol (per the MJWT draft's Section 8.1). A failure at this layer is immediate DENY before any Cedar evaluation begins.
+   (2) CAP Tier 0 (constitutional) prohibitions. Immediate DENY on failure.
+   (3) CAP Tier 1 (jurisdictional) prohibitions.
+   (4) SPO scope constraint enforcement, if the request is governed by an active SPO. Immediate DENY before Cedar evaluation on violation.
+   (5) SO Type Cedar policy (parent then subtype for SOV-02 subtypes) -- with SO Instance state attributes and IDP intent attributes now populated only after MJWT verification has actually confirmed the principal/mandate relationship they assume.
+   A PERMIT requires all five layers to permit. -02 placed MJWT verification LAST, as layer 5, after SO Type Cedar policy. This directly contradicted MJWT's own protocol and let Cedar evaluate -- and a Stage 2 test trace confirmed reach PERMIT -- against an MJWT with an invalid signature, before a later layer produced the correct final DENY. This is a soundness gap at the trace level, not merely a final-answer gap.
 
-Causal ordering:
-   The property that every SO state transition has a cryptographically committed predecessor. The SO Event Stream is an append-only, GEC-signed log where each entry references the `prior_event_id` of the previous entry. An agent cannot claim to have transitioned an SO from state A to state B without the complete causal chain from the SO's initial state being present and verifiable.
+Event Stream integrity:
+   Append-only, GEC-signed, prior_event_id causal chain. Entry deletion, modification, or reordering are each independently detectable: a broken prior_event_id chain MUST be reported as INTEGRITY_VIOLATION. SCITT submission (mandatory at Level 3 conformance) is performed by an independent process to prevent single-point suppression.
 
-GEC-mediated transitions:
-   No agent acts on an SO directly. Every transition is submitted to the GEC as a GEC.transition() call with an accompanying IDP. The GEC evaluates the call against CAP (Tier 0, then Tier 1), SPO scope constraints (if applicable), SO Type Cedar policy, and MJWT scope before executing or refusing the transition. This is the architectural guarantee that makes SO governance non-bypassable at the application layer.
+SO Type Registry:
+   The extensible catalog of governed resource types (IANA, Specification Required). Every SO Instance is an instance of a registered SO Type, which defines the state machine, Zone A schema, Cedar policy set, and attachment types. soos/ namespace reserved for SOOS-defined types; ietf/ reserved for IETF Standards Track types.
 
-GDPR cryptographic erasure:
-   SOV defines the mechanism by which an SO instance's personal data can be rendered inaccessible while the structural audit record is preserved. The SO's Zone B encryption keys are destroyed. Personal data encrypted under those keys is computationally inaccessible; the Zone A data and Event Stream (transition types, timestamps, policy references) remain intact and auditable. Satisfies GDPR Article 17 and APPI Article 19.
-
-so_authority_principal:
-   The principal with ultimate authority over disputed SO state transitions. Declared at cluster formation in MAD. When multiple agents in a cluster have conflicting views of the SO state, so_authority_principal is the designated resolver.
-
-scope_constraints: [NEW in -02]
-   The Zone A object in an SPO instance that defines the boundary within which agents operating under the plan are permitted to act. Five dimensions: geographic_scope (ISO 3166-1 / sub-jurisdiction), so_type_scope (permitted target SO Types), agent_role_scope (permitted agent roles), temporal_scope (not_before / not_after), max_delegation_depth. The GEC enforces scope_constraints before Cedar evaluation; a scope violation is an immediate DENY.
-
-cedar_bundle_ref: [NEW in -02]
-   A content-addressed URI in the SPO Zone A referencing the Cedar policy bundle governing all agent transitions under this plan. The GEC loads the bundle at activation and verifies its SHA-256 hash against the value committed to the Event Stream at SPO_ACTIVATED. Mid-plan bundle updates require human principal authorization and generate a CEDAR_BUNDLE_UPDATED Event Stream entry.
+INV-ZA-1:
+   Zone A MUST NOT contain personal data. The invariant that makes the audit record itself GDPR/APPI-safe by construction rather than by redaction.
 
 ---
 
 ## SECTION 4 — Relationship to Adjacent Standards
 
-Cedar (Amazon Web Services, Cedar Policy Language):
-   Cedar provides the evaluation semantics for SO Type policy sets. SOV profiles Cedar for agentic governance by defining the `so.*` context attribute namespace (so.so_id, so.so_type_id, so.current_state, so.current_phase, so.human_principal_id, so.prior_denial_count, so.mandate_count) that Cedar policies evaluate against. SOV-02 adds SPO-specific (`spo.*`) and Mission Plan-specific (`mission.*`) Cedar attributes.
+Cedar (Amazon Web Services):
+   Provides the policy evaluation semantics SOV's authorization layer depends on. SO Type declarations declare Cedar policy sets; the GEC evaluates Cedar against SO Instance state attributes exposed via the so.* context namespace -- now only after Mandate JWT verification (layer 1) has completed.
 
-WIMSE (Workload Identity in Multi-System Environments):
-   WIMSE establishes workload identity for multi-system environments but does not define what workloads are authorized to act on. SOV provides that binding target. WIMSE credentials authenticate the agent; the MJWT (scoped to an SO instance) authorizes what the authenticated agent may do to a specific SO. The SPO (SOV-02) extends this: agents operating under a plan hold mandates scoped to the SPO so_id, not just individual SO instances.
+SCITT (draft-ietf-scitt-architecture):
+   Provides the transparency model for SO Event Stream anchoring. Every Event Stream entry is submitted to a SCITT transparency log (mandatory at Level 3 conformance). SOV is event-centric where SCITT is artifact-centric; the SO Event Stream is the natural SCITT claim subject for governance-event transparency.
 
-W3C Verifiable Credentials:
-   VC provides a general-purpose credential format for claims about entities. SOV's SO instance is not a VC subject — it is an operational protocol entity with real-time state, causal history, and GEC-mediated transition semantics. The SO's governance record is richer than a VC claim; it includes the full causal chain of state transitions with policy rationale.
+WIMSE (draft-ietf-wimse-arch):
+   Establishes workload identity but does not define what workloads are authorized to act on. SOV provides that binding target: WIMSE credentials authenticate the agent; the MJWT (scoped to an SO Instance, verified before any Cedar evaluation touches it) authorizes what the authenticated agent may do to it.
 
-GDPR (General Data Protection Regulation):
-   SOV's cryptographic erasure mechanism is designed to satisfy GDPR Article 17 (right to erasure) for SO instances containing personal data. The erasure is object-level and cryptographic — personal data is rendered computationally inaccessible while the structural governance record is preserved.
+DAWN (Decentralized Agent Workload Networking, BoF):
+   SOV is directly relevant to DAWN's requirements in one dimension -- the governed resource agent authority is bound to. DAWN addresses agent-to-agent communication and workload routing; SOV addresses what agents operate on when they arrive at a workload. SOV's DAWN comment addresses three points: (a) the SO as the normative binding target for agent authorization in multi-workload topologies; (b) the Zone A/Zone B boundary as a portable interoperability surface -- DAWN routing can use Zone A state without touching personal data; (c) the SO Type Registry as an IANA-analogous coordination point. The SPO remains directly relevant to DAWN's orchestration requirements; only the Mission Plan SO's DAG model moved to AOP, not its relevance.
 
-SCITT (Supply Chain Integrity, Transparency, and Trust):
-   The SO Event Stream is the primary input to GAR's SCITT transparency log anchoring. SCITT provides external verifiability of the SO's causal history without requiring access to the GEC itself. SOV-02 requires SCITT submission to be performed by an independent process (not the GEC) to prevent single-point tampering suppression.
+AOP (draft-sato-soos-aop):
+   Sole normative owner, as of -03, of the Mission Plan SO and Mission Status SO subtypes, built on the Subtype Model SOV defines. AOP's Mission Plan SO DAG enforcement coordinates with MAD for multi-agent sub-goal assignment; HEM escalation triggered by Mission Plan SO failures is specified in AOP, not SOV.
 
-OpenTelemetry: [NEW in -02]
-   SOV-02 defines OTel span attributes and naming for Event Stream entries: span name `soos.so.<event_type>`; attributes `soos.so.so_id`, `soos.so.so_type_id`, `soos.governance.kernel_id`, `soos.event.event_id`, `soos.event.event_type`, `soos.event.prior_event_id`. OTel export is RECOMMENDED and does NOT substitute for SCITT submission.
+draft-ietf-vcon-vcon-container:
+   Composition, not overlap: SO governs during execution; vCon packages the resulting records for portable post-session use.
+
+draft-ietf-oauth-resource-metadata:
+   Complementary: OAuth resource metadata describes server capabilities; the SO Type Registry describes governance properties of resource types -- state machines, Cedar policy sets, lifecycle rules.
+
+W3C PROV-DM:
+   An SO's state transition sequence is a PROV-DM activity chain: each state change is an Activity, each SO state is an Entity, the GEC is the Agent.
+
+OpenTelemetry:
+   soos.so.* and soos.event.* span attributes, span naming soos.so.<event_type>, map Event Stream entries to standard trace spans. Does not substitute for SCITT submission.
 
 ---
 
 ## SECTION 5 — Normative SOOS Cross-References
 
+Versions below are those cited by SOV-03 as of its submission.
+
 This draft depends on:
-   KIA (draft-sato-soos-kia-03) — the GEC's Governance Identity Key (GIK) used to sign Event Stream entries is attested via KIA; the `soos.governance.kernel_id` field references the KIA-attested GEC identity; Event Stream integrity verification per §9 depends on KIA attestation
-   IDP (draft-sato-soos-idp-04) — every GEC.transition() call on an SO is accompanied by an IDP; the SPO idp_validation_ref defines structural IDP constraints for plan-scoped transitions; the SO Event Stream records the IDP for each transition
+   KIA (draft-sato-soos-kia-06) -- the GEC's Governance Identity Key (GIK) used to sign Event Stream entries is attested via KIA; soos.governance.kernel_id references the KIA-attested GEC identity; Event Stream integrity verification depends on KIA attestation
+   Cedar -- policy evaluation semantics
 
 The following drafts depend on this draft:
-   MJWT (draft-sato-soos-mjwt-02) — every MJWT carries so_id, state_constraint, and session_limit as SO-scoped claims; the SO instance is the named binding target of the MJWT; SPO-scoped mandates carry the SPO so_id
-   MAD (draft-sato-soos-mad-02) — MAD cluster governance operates over shared SO instances; so_authority_principal is declared at cluster formation; SPO max_delegation_depth MUST NOT exceed the MAD cluster's max_delegation_depth; Mission Plan SO DAG enforcement coordinates with MAD for multi-agent sub-goal assignment
-   CAP (draft-sato-soos-cap-04) — the SO Type's jurisdiction configuration drives CAP's Tier 1 prohibition evaluation; the SO instance's so_id appears in CAP Violation Records; SPO cap_rrs_catalog_ref activates a plan-specific CAP-RRS profile; CAP Tier 0 prohibitions MUST NOT be relaxed by any SPO
-   AEP (draft-sato-soos-aep-01) — AEP's ACT phase targets a specific SO instance via GEC.transition(); the SO's current state is visible to the agent in the SENSE phase as a Proximity Event
-   HEM (draft-sato-soos-hem-05) — HEM events are bound to SO instances; HEM_TRIGGERED and HEM_RESOLVED events are recorded in the SO Event Stream; SPO activation/revocation and Mission Plan SO failures trigger HEM; Mission Status SO divergence triggers HEM_CLASS_GOVERNANCE_INCONSISTENCY
-   GAR (draft-sato-soos-gar-03) — GAR records are generated from SO Event Stream entries; Cryptographic Erasure is recorded in GAR; SPO so_id appears as episode-scope identifier in plan-governed GAR records
+   IDP (draft-sato-soos-idp-05) -- the "governed object" in IDP is an SO Instance; context_refs may reference SO Event Stream entries; so.prior_denial_count composes with IDP's own prior_denial_count attribute; SPO's idp_validation_ref provides plan-specific IDP structural validation
+   HEM (draft-sato-soos-hem-06) -- HEM events bound to SO Instances; HEM_TRIGGERED/HEM_RESOLVED MUST be recorded in the SO Instance's Event Stream; HEM_PENDING prohibits all agent-initiated Transition Requests until human decision
+   GAR (draft-sato-soos-gar-07) -- GAR records generated from SO Instance Event Stream entries; Cryptographic Erasure MUST generate an ERASURE_COMPLETED GAR entry
+   CAP (draft-sato-soos-cap-05) -- CAP prohibitions enforced at the SO level, now confirmed to run only after MJWT verification (Section 9.3); SPO's cap_rrs_catalog_ref enables plan-specific CAP-RRS activation
+   MJWT (draft-sato-soos-mjwt-05) -- binds agent authority to a specific SO Instance; so_id is the normative reference to the SO Instance Identity Layer; verified before any other Cedar evaluation layer as of -03
+   MAD (draft-sato-soos-mad-04) -- cluster governance operates over shared SO instances; SPO's max_delegation_depth MUST NOT exceed the applicable MAD cluster's max_delegation_depth
+   AOP (draft-sato-soos-aop-02) -- Mission Plan SO and Mission Status SO are AOP subtypes built on SOV's Subtype Model, as of -03
+   FAIP (draft-sato-soos-faip-02) -- cross-domain federated analytics derived from SO Instance Event Streams; Zone B excluded from FAIP analytics by INV-ZA-1
+   GRP -- the SPO is consumed by GRP for plan-scope remediation governance
 
 ---
 
-## SECTION 6 — Vienna / Datatracker Status
+## SECTION 6 — Datatracker Status
 
-Draft identifier: draft-sato-soos-sov-02
-Submission date: July 7, 2026 (target)
-Current version: -02
-Status: Active Individual Submission, IETF Datatracker
+Draft identifier: draft-sato-soos-sov-03
+Submission date: September 4, 2026
+Expires: March 4, 2027
+Current version: -03
+Status: Active Internet-Draft (individual), IETF Datatracker
+Intended status: Standards Track
 Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-sov/
 Draft page: https://soosproject.ai/drafts/sov
 Root llms.txt: https://soosproject.ai/llms.txt
 
--02 delta summary for IETF reviewers:
-   §5.4 — SO Type Registry Governance: Designated Expert review, registration requirements, Expert Review Criteria, update/deprecation, conflict resolution (new)
-   §5.5 — SOV-02 Subtype Model: Inheritance rules for state machine, Cedar policy, Zone A fields; max depth 3 recommended / 5 absolute (new)
-   §6 — Standing Plan Object: Complete SPO specification — state machine, scope_constraints, cedar_bundle_ref, cap_rrs_catalog_ref, idp_validation_ref, lifecycle, disaster response use case (new)
-   §7 — Mission Plan SO and Mission Status SO: DAG adjacency list Zone A structure, dependency enforcement, SUBGOAL_COMPLETED/FAILED event types, Mission Status binding invariants (new)
-   §9 — Event Stream Integrity: GEC-signed append-only normative requirements, kernel_id as mandatory per-entry field, OTel integration (new section, promoted from scattered -01 mentions)
-   §10.3 — Policy Evaluation Order: SPO scope constraint enforcement inserted as layer 3; now five-layer evaluation order
-   §14 — Security Considerations: Four new attack vector subsections (SO State Manipulation, Event Stream Tampering, SO Type Spoofing, Stale state_constraint Exploitation) with mechanism / defense / residual risk structure
-   §16 — IANA: SO Type Code Namespace (§16.2); SPO media type application/soos-standing-plan-object+json (§16.5); nine new SO Event Types for SPO and Mission lifecycle
-   Appendix B — Disaster Response SPO reference implementation: Hokkaido M7.2 scenario with concrete JSON and activation timeline
-
-Target WG engagement at IETF 126 Vienna (July 18–24, 2026):
-   DAWN BOF — SOV §13.1 addresses the DAWN problem space; SPO and Mission Plan SO are directly relevant to DAWN orchestration requirements: the SPO defines the governance container for a cross-workload operational plan, and the Mission Plan SO defines the DAG-structured task graph that DAWN agents traverse. SOV written comment prepared pre-Vienna.
-   WIMSE — the SOV/WIMSE binding relationship (WIMSE identifies the workload; SOV provides the object the workload is authorized to act on) is a natural extension point for WIMSE scope discussion; SPO-scoped mandates extend this to plan-level authority.
-   SCITT — SOV Event Stream as SCITT-eligible governance-event claim stream; independent SCITT submission process requirement (§14.2).
+Version history: -02 (SOV-02 Subtype Model, Standing Plan Object, Mission Plan SO / Mission Status SO subtypes, expanded Security Considerations, SO Type code namespace and SPO media type IANA registrations). -03 closes out a WIMSE Security Review checklist pass against -02: removes Mission Plan SO and Mission Status SO entirely (now AOP's sole normative subtypes, deferring to AOP's materially more complete DAG model), corrects the Cedar policy evaluation order to place Mandate JWT verification first rather than last (a confirmed real defect, not merely theoretical -- a Stage 2 test trace showed Cedar reaching PERMIT on an invalid-signature MJWT under the old ordering), and updates eight stale cross-draft version references throughout. Sections 8 through 16 renumbered down by one to close the gap left by Section 7's (Mission Plan/Status SO) removal.
