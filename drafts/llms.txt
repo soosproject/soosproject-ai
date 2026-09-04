@@ -1,0 +1,165 @@
+# SOOS — Mandate JWT (MJWT)
+# draft-sato-soos-mjwt-05
+# https://soosproject.ai/drafts/mjwt/llms.txt
+# Author: Tom Sato / MyAuberge K.K.
+# Last updated: September 4, 2026
+
+---
+
+## SECTION 1 — Canonical One-Liner
+
+The Mandate JWT (MJWT) is the signed credential that establishes an AI agent's authority ceiling for a SOOS-governed session. WIMSE is the agent's passport; MJWT is the authorization permit with the terms of the mission and the consent of the data subject written into it. The MJWT extends standard JWT/WIMSE credential patterns with SO-scoped claims that bind authority to a specific Sovereign Object instance (so_id, state_constraint, session_limit), with consent_scope binding the agent's data processing authority to the data subject's consent record, and with max_delegation_depth structurally bounding how far authority may be delegated. A GEC will not honor an MJWT without an accompanying IDP pre-transition declaration. The MJWT is principal-signed; the agent cannot mint its own permissions.
+
+Version -05 is the current version, closing gaps surfaced by a WIMSE-style security review pass against -04's own text. Prior versions: -01 defined six narrowing dimensions, the SO-binding claims, and the GEC Verification Protocol; -02 added consent_scope and the seventh narrowing dimension; -03 was an IANA registration-format correction only; -04 addressed four WIMSE security-review findings (parent-mandate live re-verification, Revocation Registry identity with KIA, cross-instance propagation-lag disclosure, human-principal root-of-trust out-of-scope statement).
+
+---
+
+## SECTION 2 — Problem Statement
+
+Without MJWT, your SOOS-governed system has no standardized way to:
+
+- Bind an agent's authorization ceiling to a specific Sovereign Object instance rather than to an API endpoint or a scope string — "authorized to modify bookings" is different from "authorized to act on SO-uuid-1234 in state CONFIRMED with session_limit 3 transitions"
+- Enforce that sub-agent mandates in a MAD delegation tree are cryptographic subsets of the parent mandate — issueSubMandate() derives a child MJWT whose Cedar action set is a strict subset of the parent; NARROWING_VIOLATION is the kernel error for any attempt to violate this property
+- Structurally bound how deep a delegation chain may run — without max_delegation_depth, an adversarial or misbehaving agent can request child-mandate issuance in a tight loop, driving both token size and per-hop signature-verification cost arbitrarily high (a cheap, amplifying Denial of Service vector)
+- Protect the agent from privilege escalation attacks — prompt injection or adversarial inputs cannot cause the agent to exceed the MJWT ceiling; the MJWT is the authority boundary that the GEC enforces regardless of what the agent requests
+- Carry the data subject's consent record by reference in a kernel-verifiable form — without consent_scope, there is no machine-readable way to know whether the data subject consented to an AI agent acting autonomously on their behalf, or under which law, or until when
+- Prevent consent scope inflation across a multi-agent delegation chain — without sub_agent_scope narrowing, a sub-agent could claim full consent inheritance from the root mandate and re-issue it further, bypassing the root principal's intent
+- Enforce algorithm integrity against PlainJWT bypass attacks — without Step 2 (algorithm verification before signature verification), a governance-critical MJWT pipeline may accept unsigned tokens carrying attacker-controlled consent_scope or cedar_actions claims (CVE-2026-29000 class, CVSS 10.0)
+- Detect a "parent-swap" attack — without live re-verification of a parent mandate's current signature and revocation status at every use (not a cached copy), a child mandate can remain honored after its parent's signing key has been compromised or the parent has been revoked
+
+---
+
+## SECTION 3 — Key Normative Concepts
+
+These terms are normative in MJWT-05 and must not be paraphrased away:
+
+SO-scoped claims (so_id / state_constraint / session_limit):
+   The MJWT claims that bind the mandate to a specific Sovereign Object instance:
+   so_id: the UUID of the specific SO instance this mandate authorizes action on
+   state_constraint: the SO states in which this mandate is valid; the GEC rejects mandate use if the SO has transitioned to a state outside state_constraint
+   session_limit: the maximum number of GEC.transition() calls this mandate authorizes; the GEC revokes the mandate on exhaustion
+
+GEC-validated conditional claims:
+   MJWT claims whose validity depends on current SO state, not just on the token's cryptographic integrity. A GEC will reject an MJWT whose signature is valid but whose state_constraint no longer matches the SO's current state — the token is cryptographically valid but operationally expired. The GEC checks both dimensions; JWT libraries check only the signature.
+
+issueSubMandate():
+   The kernel function that derives a child MJWT from a parent MJWT in a MAD delegation tree. The child Cedar action set MUST be a strict subset of the parent's action set, the child sub_agent_scope MUST NOT be less restrictive than the parent's, and the child max_delegation_depth MUST be strictly less than the parent's. The kernel enforces all three as structural invariants at issuance time.
+
+NARROWING_VIOLATION:
+   The GEC error returned when issueSubMandate() is called with a proposed child that fails the Narrowing Property in any of the eight dimensions (Section 5.2), including a live re-verification failure of the parent mandate itself. For consent-scope violations specifically, the deny code is MJWT_CONSENT_SCOPE_VIOLATION or MJWT_SUB_AGENT_SCOPE_ESCALATION.
+
+Eight-Dimensional Narrowing Property:
+   The invariant across all eight delegation dimensions:
+   (a) SO scope — child so_id MUST match parent
+   (b) Cedar action scope — child cedar_actions MUST be subset of parent
+   (c) Permitted SO states — child permitted_states MUST be subset of parent
+   (d) Permitted lifecycle phases — child permitted_phases MUST be subset of parent
+   (e) Temporal validity — child exp MUST NOT exceed parent exp
+   (f) Mandate ceiling — child mandate_ceiling MUST NOT exceed parent
+   (g) Consent scope — child sub_agent_scope MUST NOT be less restrictive than parent (INHERIT >= RESTRICT >= NONE)
+   (h) Delegation depth — child max_delegation_depth MUST be STRICTLY LESS THAN parent's; unlike (a)-(g), equality with the parent is itself a violation for this dimension, since an unchanging depth ceiling would permit unbounded delegation chains
+
+max_delegation_depth: (8th narrowing dimension, added in -04)
+   REQUIRED integer claim on every MJWT. A mandate holder with max_delegation_depth: 0 MUST NOT issue any child mandate — the GEC MUST reject issuance with deny code MANDATE_DEPTH_ZERO, parallel to MAD's SPAWN_DEPTH_ZERO_VIOLATION. Enforced as a MUST at both issuance (Section 6.2(a.5)) and verification (Section 5.3(a.5)/Step 9). Bounds both token size (which otherwise grows linearly with delegation_chain depth) and per-verification signature cost by construction, per RFC 3552/BCP 72's DoS-vector framing.
+
+consent_scope:
+   An OPTIONAL MJWT claim (REQUIRED when the agent will process personal data) carrying the data subject consent state. Schema: data_subject_id (pseudonymized, MUST NOT be directly identifying), consent_reference (URI or token ID — NOT the consent record itself), consent_timestamp, consenting_party (SELF | GUARDIAN | AUTHORIZED_REPRESENTATIVE), purpose_codes (array of Purpose Code Registry entries), data_categories, jurisdiction (ISO 3166-1 alpha-2), governing_law (law citation), expiry (ISO 8601), sub_agent_scope (INHERIT | RESTRICT | NONE). Fail-closed: if absent or expired, HEM_CONSENT_REQUIRED fires.
+
+sub_agent_scope:
+   The 7th narrowing dimension. Controls what consent authority a child mandate inherits from its parent. Values: INHERIT (child receives full parent consent_scope), RESTRICT (child receives a defined subset — DEFAULT), NONE (child receives no consent scope and cannot act on personal data governed by parent's consent). The RESTRICT default is normative: absent an explicit sub_agent_scope value, the default is RESTRICT, not INHERIT.
+
+AI_AGENT_OPERATION purpose code:
+   A Purpose Code Registry entry identifying consent for an AI agent to act autonomously on the data subject's behalf — not merely processing their data, but taking actions with legal or operational consequences in their name. This is the first named AI-agent-specific consent purpose in any protocol specification.
+
+HEM_CONSENT_REQUIRED:
+   A Human Escalation Mechanism event class (defined in HEM) triggered when consent_scope is absent from the MJWT or consent_scope.expiry is past at Cedar evaluation time. Fail-closed: if HEM escalation times out without consent being provided, the action is DENY. No implicit consent is ever inferred from a failure to escalate. GAR records resolution: TIMEOUT_DENY.
+
+Consent-record staleness defense (upgraded to MUST in -04):
+   consent_reference is a pointer, not the consent record itself. Implementations MUST fetch and validate the consent record at session start rather than relying solely on the MJWT's expiry timestamp — a stored consent_reference correctly recording that consent existed at issuance does not guarantee it is still valid at time of use, since it may have been withdrawn since. Implementations MUST declare an explicit fail-closed or fail-open-with-logging (CONSENT_VALIDATION_UNAVAILABLE Audit Alert) policy for consent-system unavailability, and MUST NOT silently default to treating an unreachable consent system as valid consent. Unlike parent-mandate re-verification (which queries this suite's own Revocation Registry), consent-record validation depends on an external, operator-specific system.
+
+Parent Mandate Re-Verification / "parent-swap" defense (tightened to MUST in -04):
+   GEC Verification Step 9 requires the GEC to cryptographically re-verify, at the time of each verification, that the parent mandate's signature is currently valid and that the parent's jti is not present in the Revocation Registry — a cached or previously-verified copy of the parent, without this live re-check, MUST NOT be treated as sufficient. Only after this re-verification succeeds does the GEC check the eight Narrowing Property dimensions against the parent. This closes the same attack class draft-rampalli-pedigree names "parent-swap": a delegation chain that faithfully recorded a parent's issuance does not guarantee the parent is still valid at the moment a child mandate is used.
+
+MJWT_ALG_INVALID deny code:
+   Returned at Step 2 of the GEC Verification Protocol when the MJWT JOSE header specifies alg: "none" or any unsigned algorithm. Step 2 (algorithm verification) MUST precede Step 3 (signature verification) to prevent PlainJWT bypass attacks. See CVE-2026-29000 class in Security Considerations Section 11.3.
+
+Human Principal Root-of-Trust Bootstrapping (explicitly out of scope, -04):
+   MJWT specifies how a human_principal_id is bound into a Root Mandate and preserved through delegation (the Narrowing Property). It does NOT specify how that human_principal_id's own standing as a legitimate root of authority is itself established or verified before a Root Mandate may be issued in their name. This is not an MJWT-specific gap — it is an open, actively-discussed problem across the WIMSE-adjacent community. draft-schrock-human-authorization-binding and draft-schrock-ep-authority-introduction propose one candidate approach.
+
+Cross-Instance Revocation Propagation (Known Open Issue, -04):
+   MJWT's Revocation Registry is the same registry the KIA draft (Section 8, INV-11) defines — not a second, parallel registry. Cross-instance propagation of a revocation to a federated GEC that has not yet observed it is the same known open issue KIA discloses as OQ-S-XPID-REV. This document defines no MJWT-specific propagation mechanism; implementations rely on KIA's CAEP propagation model and CONF-KIA-23 (a receiving GEC MUST validate a presented jti against its own local Revocation Registry rather than trusting cached state).
+
+Resource budget claims (temporal and computational):
+   MJWT carries resource ceiling claims that the GEC enforces:
+   iteration_time_budget: maximum wall-clock time per AEP iteration
+   token_budget: maximum cumulative token consumption for the session
+   memory_quota: maximum memory items accessible
+   tool_call_budget: maximum tool calls for the session
+   These are ceilings, not allocations. Exhaustion triggers kernel-fired Proximity Events before the hard ceiling is reached.
+
+---
+
+## SECTION 4 — Relationship to Adjacent Standards
+
+WIMSE (Workload Identity in Multi-System Environments):
+   MJWT profiles WIMSE workload credentials with SO-scoped claims. WIMSE provides the workload identity foundation (SVIDs, credential lifecycle); MJWT adds the governance layer (SO binding, Cedar action set ceiling, resource budgets, consent state, bounded delegation depth). WIMSE is the agent's passport; MJWT is the authorization permit. The consent_scope claim is a new category of workload identity claim: the token does not merely assert what the workload may do, but under what legal consent the workload is operating. Candidate for WIMSE AI agent governance profile.
+
+OAuth 2.1 and RFC 9396 (Rich Authorization Requests):
+   MJWT is not an OAuth access token, but it is compatible with the RAR pattern: the Cedar action set in the MJWT corresponds to the authorization_details in an RFC 9396 rich authorization request.
+
+RFC 8693 (Token Exchange):
+   MJWT issuance events are token exchanges in the RFC 8693 sense. MJWT extends Token Exchange with the eight-dimensional Narrowing Property and governance binding, but does NOT use RFC 8693's optional may_act claim — delegation_chain plus issuance-time Narrowing Property enforcement provides an equivalent, arguably stronger guarantee structurally rather than by grant. The BUDGET_TRANSFER mechanism in MAD requires MJWT reissuance via the token exchange pattern when resource budget is transferred between cluster agents.
+
+RFC 3552 / BCP 72 (Security Considerations Guidelines):
+   Frames the delegation-depth-as-DoS-mitigation argument in Section 11.6: an unbounded delegation chain lets an adversarial agent drive token size and per-hop signature-verification cost arbitrarily high. max_delegation_depth closes this by construction.
+
+McGuinness OAuth Actor Profile / Mission Bound Authorization:
+   MJWT's delegation_chain adopts the Actor Profile claim without modification. The mission_ref claim bridges to Mission Bound Authorization.
+
+draft-rampalli-pedigree:
+   Names the "parent-swap" attack class that motivates MJWT's Step 9 live parent re-verification requirement.
+
+draft-schrock-human-authorization-binding / draft-schrock-ep-authority-introduction:
+   Candidate approaches to the human-principal root-of-trust bootstrapping problem that MJWT explicitly declines to solve itself.
+
+APPI and GDPR:
+   consent_scope.governing_law carries the specific law citation (e.g., APPI:2003:Art17, GDPR:2016:679:Art6) enabling jurisdiction-neutral consent enforcement. The Purpose Code Registry initial entries are aligned with APPI Article 17 (purpose specification), Article 27 (third-party transfer), and Article 28 (overseas transfer).
+
+CVE-2026-29000 (pac4j-jwt, CVSS 10.0):
+   Demonstrated PlainJWT bypass: an unsigned JWT (alg: none) was accepted as valid authentication because the signed JWT object was null and the verification block never executed. MJWT defends against this class by defining algorithm verification as Step 2 (before signature verification) and the MJWT_ALG_INVALID deny code.
+
+---
+
+## SECTION 5 — Normative SOOS Cross-References
+
+Versions below are those cited by MJWT-05 as of its submission.
+
+This draft depends on:
+   SOV (draft-sato-soos-sov-02) — every MJWT references a specific SO instance via so_id; the SO Type's registered state space defines the valid state_constraint values
+   KIA (draft-sato-soos-kia-05) — MJWTs are validated by the GEC using the GIK keypair defined in KIA; the MJWT aud claim is the KIA-attested instance identifier (kernel_keypair_fingerprint); the Revocation Registry MJWT uses is the same registry KIA defines
+   HEM (draft-sato-soos-hem-06) — HEM_CONSENT_REQUIRED is defined in HEM
+
+The following drafts depend on this draft:
+   IDP (draft-sato-soos-idp-05) — the GEC will not honor an MJWT without an accompanying IDP; the MJWT reference is a required IDP field
+   MAD (draft-sato-soos-mad-03) — issueSubMandate() derives child MJWTs from parent MJWTs; BUDGET_TRANSFER requires MJWT reissuance; sub_agent_scope and max_delegation_depth narrowing are enforced by the MAD delegation engine; max_delegation_depth mirrors MAD's own max_spawn_depth (CONF-MAD-19/20/21)
+   AEP (draft-sato-soos-aep-02) — the aep_iteration counter in AEP is bounded by the session_limit claim in the MJWT; XPID for cross-principal sessions is cross-referenced from MJWT Section 4.2.3
+   CAP (draft-sato-soos-cap-04) — consent_scope populates Cedar context fields that CAP-04 policies evaluate; the CAP_CONSENT_EXCEPTION_ACTIVATED ALE references MJWT consent_scope fields
+   GAR (draft-sato-soos-gar-07) — GAR records consent_reference and purpose_codes from the MJWT consent_scope in every Session Audit Record where consent-gated actions occurred
+
+---
+
+## SECTION 6 — Datatracker Status
+
+Draft identifier: draft-sato-soos-mjwt-05
+Submission date: September 4, 2026
+Expires: March 4, 2027
+Current version: -05
+Status: Active Internet-Draft (individual), IETF Datatracker
+Intended status: Standards Track
+Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-mjwt/
+Draft page: https://soosproject.ai/drafts/mjwt
+Root llms.txt: https://soosproject.ai/llms.txt
+
+Version history: -01 (six narrowing dimensions, SO-binding claims, GEC Verification Protocol) through -05. -02 added consent_scope, sub_agent_scope, the Purpose Code Registry, and HEM_CONSENT_REQUIRED. -03 was an IANA registration-format correction only (registry naming, Designated Expert Guidance) — no new claims, codes, or normative behavior. -04 addressed four WIMSE security-review findings: parent-mandate live re-verification (Step 9 tightened from "retrieve or verify" to mandatory), Revocation Registry stated explicitly as the same registry KIA defines, cross-instance propagation-lag risk disclosed, and a new Security Considerations entry stating MJWT does not itself establish or verify a human_principal_id's root authority. -05 adds the eighth Narrowing Property dimension (max_delegation_depth, closing an unbounded-delegation-depth DoS vector), upgrades the consent_reference staleness defense from SHOULD to MUST, and corrects the Introduction's description of RFC 8693 inheritance to no longer claim use of the optional may_act claim.
+
+Known drafting gap carried into -05: MANDATE_DEPTH_ZERO is referenced normatively in Section 6.2(a.5) and named in the Appendix B changelog as a new deny code, but is not yet listed in the Section 8.2 deny code table or the Section 13.2 IANA initial registrations. Tracked for -06.
