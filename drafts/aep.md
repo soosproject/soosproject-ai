@@ -1,28 +1,25 @@
 # Agentic Execution Protocol
 
 Layer 2 — Session Foundation
-**draft-sato-soos-aep-02**
+**draft-sato-soos-aep-03**
 See this URL for full draft protocol [Datatracker](https://datatracker.ietf.org/doc/draft-sato-soos-aep/)
 See [SOOS Stack](/stack) implementation
 
 ---
 
-## What's new in AEP-02
+## What's new in AEP-03
 
-- **XPID binding at session open** — the GEC derives the agent's Cross-Principal Identifier from the KIA-verified Party Registry at session initiation. Client-supplied XPIDs are rejected outright. This closes the session fixation gap.
-- **STALLED and PLAN_B_ACTIVE session states** — two new normative session states for when an agent cannot make progress without human direction (STALLED) and when the pre-declared Plan B has been activated (PLAN_B_ACTIVE). Both states have full trigger conditions, GAR event log markers, and resume conditions.
-- **Expected Outcome Declaration (EOD)** — a pre-session commitment structure where the agent declares its expected outcome, its acceptance envelope for success, and a pre-declared Plan B before the first SENSE delivery. Required for Class 3 agents; recommended for Class 2.
-- **RETRY_CONTINUATION strengthened** — the what_changed field is now mandatory in every RETRY_CONTINUATION IDP. The GEC rejects what_changed values that do not reference specific enrichment fields or observable context changes. prior_denial_count is now a Cedar context attribute.
-- **AEP-to-OTel mapping (Section 12)** — mandatory span attributes at each AEP phase (SENSE/REASON/PLAN/ACT/OBSERVE) using the soos.aep.* namespace. The OTel layer makes the governed loop observable without replacing the Event Stream as the governance record.
-- **Four new Security Considerations** — session fixation, XPID binding integrity, cross-principal scope leakage, STALLED state exploitation.
+**Step 4a — DAM Lineage and Residency Validation.** Until this revision, the data governance companion specification (DAM) defined a narrowing rule for how a derived artifact's `data_residency` must be computed from its inputs — but AEP, the protocol that actually produces those artifacts, gave no mechanism to apply it. -03 closes that gap: when a Transition Request carries the new optional `da_production` field, the GEC resolves every referenced input artifact, confirms each is in a `VALID` lifecycle state, and computes the resulting artifact's `data_residency` under the narrowing rule — all of this *before* the transition's Event Stream write occurs, and committed under the same signature as that write.
+
+This matters for the same structural reason validate-then-commit matters everywhere else in this suite: nothing is signed until the computation is known-correct. A reference to an artifact that isn't yet `VALID` is rejected outright (`DA_LINEAGE_NOT_VALID`) — because a non-VALID artifact's own residency isn't final yet, and narrowing against a value that could still change would just relocate the problem rather than solve it. An unresolvable reference is rejected as `DA_LINEAGE_UNRESOLVED`. Only once lineage is fully resolved does Step 5 commit the state transition and the artifact's governance metadata together, in one signed write — never as two separately-committed operations where the second could fail after the first already succeeded.
 
 ---
 
 ## The problem
 
-Autonomous AI agents execute actions in the world. Right now, there is no standard for what a governed execution cycle looks like — what checks run before an action, what is recorded during it, and what must happen before the next action begins.
+Autonomous AI agents execute actions in the world. There is no standard for what a governed execution cycle looks like — what checks run before an action, what is recorded during it, and what must happen before the next action begins.
 
-AEP defines the governed execution loop: the protocol that wraps every agent action with identity verification, policy evaluation, audit recording, and escalation detection — making each cycle reproducible, auditable, and safe to deploy at scale.
+AEP defines the governed execution loop: the protocol that wraps every agent action with identity verification, policy evaluation, audit recording, and escalation detection — making each cycle reproducible, auditable, and safe to deploy at scale. As of -03, that includes actions that produce governed data artifacts, not just actions that transition object state.
 
 **The design premise:** a governed execution loop is not a constraint on what agents can do. It is the precondition for deploying them where it counts.
 
@@ -36,7 +33,7 @@ AEP is the primary submission for the ACP (Agentic Computing Protocols) BoF at I
 
 AEP profiles GNAP (RFC 9635) for initial grant establishment: GNAP handles the authorisation grant that initiates the governed session; AEP specifies the execution loop that runs within that session. The two compose without overlap.
 
-**AEP-02 Vienna additions:** XPID binding (Section 5.1) is a direct response to WIMSE WG concerns about workload identity lifecycle in multi-agent sessions. The EOD (Section 6) is the AEP answer to pre-session intent commitment, filling a gap that exists between GNAP grant issuance and first agent action. The STALLED state (Section 5.4) provides the governance bridge between retry exhaustion and human escalation that AEP-01 lacked. The OTel mapping (Section 12) addresses the ACP BoF's observability gap for standards-track agent protocols.
+**AEP-03 adds DAM as a normative dependency.** Step 4a is the concrete enforcement point for DAM's `data_residency` narrowing rule — AEP doesn't define the artifact schema, retention rules, or write-authority model (that's entirely DAM's), but it is now the specification that says *where and how* the rule actually gets computed rather than merely declared. This is directly relevant to any working group discussion of data lineage and provenance in multi-step agentic pipelines.
 
 To engage on AEP: [IETF Datatracker](https://datatracker.ietf.org/doc/draft-sato-soos-aep/) · file issues at [GitHub](https://github.com/soosproject/soos-drafts)
 
@@ -46,23 +43,27 @@ If you are building an agentic AI system today, your agent's execution loop is a
 
 AEP closes this gap by specifying the execution loop as a protocol. Each cycle: verify identity (with XPID binding), evaluate Cedar policy, check HEM trigger conditions, execute, record in GAR. The loop is reproducible. The record is auditable. Any deviation from the protocol is detectable.
 
-**New in AEP-02 — EOD (Expected Outcome Declaration):** Before your agent starts, it commits to what it expects to achieve and what it will do if the primary path is blocked. This gives you the operational equivalent of a pre-flight checklist: if the session deviates from the EOD, the GAR record shows exactly where and why.
+**New in AEP-03 — if your agent's action produces a governed data artifact (an AGA), you now have a defined mechanism to declare it.** Add `da_production` to your Transition Request when the Cedar action is classified under `Action::ProduceAGA`: list the `da_id` values of every direct and contextual input the new artifact derives from. The GEC does the rest — resolving each reference, checking it's `VALID`, and computing the new artifact's residency classification for you. You don't compute the narrowing rule yourself and assert the result; you supply the lineage, and the GEC computes the governance metadata from already-governed data.
 
-**New in AEP-02 — STALLED state:** When your agent gets stuck — not because of a single DENY, but because no viable path to the goal exists — the STALLED state triggers a human notification and surfaces the stall reason and prior DENY chain. You find out that the agent is stuck before it silently exhausts its iteration budget.
+**Still true from -02 — EOD (Expected Outcome Declaration):** Before your agent starts, it commits to what it expects to achieve and what it will do if the primary path is blocked. This gives you the operational equivalent of a pre-flight checklist: if the session deviates from the EOD, the GAR record shows exactly where and why.
 
-**New in AEP-02 — RETRY_CONTINUATION what_changed:** When your agent retries after a denial, it must now declare what changed between the denied attempt and the retry. Generic retries that don't reference the denial's enrichment fields are rejected. This makes retry chains auditable and stops retry loops before they become a governance problem.
+**Still true from -02 — STALLED state:** When your agent gets stuck — not because of a single DENY, but because no viable path to the goal exists — the STALLED state triggers a human notification and surfaces the stall reason and prior DENY chain.
 
-Without AEP: your agent's behaviour is correct until it isn't, and you find out after the fact. With AEP: every action is preceded by a verifiable governance cycle, every stall is surfaced to the human principal, and every retry is substantiated.
+**Still true from -02 — RETRY_CONTINUATION what_changed:** When your agent retries after a denial, it must declare what changed between the denied attempt and the retry. Generic retries that don't reference the denial's enrichment fields are rejected.
+
+Without AEP: your agent's behaviour is correct until it isn't, and you find out after the fact. With AEP: every action is preceded by a verifiable governance cycle, every stall is surfaced to the human principal, every retry is substantiated, and every data artifact your agent produces carries governance metadata computed from data the kernel already trusts.
 
 [TypeScript example →](https://github.com/soosproject/soos-examples/tree/main/aep)
 
 ### Platform engineers
 
-AEP is the protocol for safe deployment of autonomous agents. The governed execution loop is the unit of deployment: each agent action is a cycle, each cycle is governed, each governance event is recorded. The result is a system you can reason about — not because the agent is perfect, but because the protocol ensures that imperfection is bounded, detected, and surfaced before it compounds.
+AEP is the protocol for safe deployment of autonomous agents. The governed execution loop is the unit of deployment: each agent action is a cycle, each cycle is governed, each governance event is recorded.
 
-**New in AEP-02 — OTel mapping (Section 12):** The soos.aep.* span attributes give your monitoring pipeline direct visibility into the AEP loop without parsing Event Stream entries. The soos.aep.cp_hash binding between SENSE and ACT spans proves that every ACT was preceded by a valid SENSE. The soos.aep.session_xpid attribute is identical across all spans in a session — a mid-session XPID change is a security event.
+**New in AEP-03 — lineage validation is atomic with the transition it belongs to.** Step 4a performs no write of its own; its failure aborts the transition entirely before any signed write occurs. When it succeeds, Step 5 commits the state transition and the AGA's Governance Envelope in the same signed write. If you're monitoring transition latency, expect Step 4a to add resolution-and-computation cost specifically on `da_production`-bearing requests — this is deliberate, since it's replacing what would otherwise be an unenforced, unaudited assumption.
 
-**New in AEP-02 — XPID at session open:** The GEC binds the agent's Cross-Principal Identifier at session initiation from the KIA-verified Party Registry. Client-supplied XPIDs are rejected. This means multi-agent deployments where sessions could be spoofed to claim another agent's identity are no longer possible at the protocol level.
+**Still true from -02 — OTel mapping (Section 12):** The soos.aep.* span attributes give your monitoring pipeline direct visibility into the AEP loop without parsing Event Stream entries. The soos.aep.cp_hash binding between SENSE and ACT spans proves that every ACT was preceded by a valid SENSE.
+
+**Still true from -02 — XPID at session open:** The GEC binds the agent's Cross-Principal Identifier at session initiation from the KIA-verified Party Registry. Client-supplied XPIDs are rejected.
 
 The Context Package (AEP §7) is the primary operational instrument: `reasoning_mode`, `session_xpid`, `session_state`, `eod_id`, `resource_envelope`, `delegation_context`. These fields travel with every execution cycle and drive downstream governance decisions.
 
@@ -70,59 +71,53 @@ The Context Package (AEP §7) is the primary operational instrument: `reasoning_
 
 **What to tell your coding assistant:**
 
-> "I need to implement the SOOS AEP-02 governed execution loop (draft-sato-soos-aep-02). The loop has five steps: SENSE, REASON, PLAN, ACT, OBSERVE. Before the first SENSE, my Class 3 agent must submit an EOD (Expected Outcome Declaration) declaring the primary expected SO state, an acceptance envelope, and a pre-declared Plan B. At session open, the GEC derives the XPID from the KIA Party Registry — do not supply XPID from the client side. Each ACT must carry eod_id. After any DENY, the next IDP must carry RETRY_CONTINUATION with a what_changed field referencing specific enrichment fields from the DENY response — generic what_changed values are rejected. If the agent accumulates N consecutive DENYs, the session enters STALLED state and I receive a notification. If an EOD Plan B is declared, the GEC can activate PLAN_B_ACTIVE automatically when STALL_PATH_EXHAUSTED. Each AEP phase must emit an OTel span in the soos.aep.* namespace with the mandatory attributes from Section 12.2."
+> "I need to implement the SOOS AEP-03 governed execution loop (draft-sato-soos-aep-03). The loop has five steps: SENSE, REASON, PLAN, ACT, OBSERVE. Before the first SENSE, my Class 3 agent must submit an EOD (Expected Outcome Declaration) declaring the primary expected SO state, an acceptance envelope, and a pre-declared Plan B. At session open, the GEC derives the XPID from the KIA Party Registry — do not supply XPID from the client side. Each ACT must carry eod_id. After any DENY, the next IDP must carry RETRY_CONTINUATION with a what_changed field referencing specific enrichment fields from the DENY response. If a Transition Request's cedar_action is classified under Action::ProduceAGA, the request MUST also carry da_production: an object with derived_from.direct_inputs and derived_from.context_inputs (arrays of da_id values, may be empty) and external_disclosure (disclosed_to_class: NONE | HUMAN_PRINCIPAL | EXTERNAL_THIRD_PARTY). The GEC resolves every direct_inputs and context_inputs reference, rejects with DA_LINEAGE_UNRESOLVED if any reference doesn't resolve, rejects with DA_LINEAGE_NOT_VALID if a direct_inputs artifact isn't yet in VALID lifecycle state, then computes the new artifact's data_residency as at least as restrictive as the most restrictive data_residency among direct_inputs (a null data_residency imposes no additional restriction). This computation happens before the Event Stream write and commits under the same signature as the state transition — one signed write, not two. If the agent accumulates N consecutive DENYs, the session enters STALLED state. Each AEP phase must emit an OTel span in the soos.aep.* namespace with the mandatory attributes from Section 12.2."
 
 **Key schema fields:**
 
 | Field | Type | Description |
 |---|---|---|
-| `session_xpid` | string | GEC-bound Cross-Principal Identifier. Derived from KIA at session open. [NEW] |
-| `session_state` | enum | ACTIVE / HEM_PENDING / STALLED / PLAN_B_ACTIVE / CLOSED [NEW] |
-| `eod_id` | string | UUID of committed Expected Outcome Declaration. [NEW] |
-| `cycle_id` | string | Unique identifier for this execution cycle |
-| `reasoning_mode` | enum | ROUTINE / PREDICTIVE / DIAGNOSTIC / CHANNEL_DEGRADED / META / COMPENSATING / DELEGATION_AWARE / HEM_INFORMED |
-| `plan_b_ref` | string | Required in PLAN_B_ACTIVE state. References EOD plan_b_id. [NEW] |
-| `what_changed` | string | Required in RETRY_CONTINUATION. Must reference DENY enrichment fields. [NEW] |
-| `prior_denial_count` | integer | Cedar context attribute: total DENYs for this action in this session. [NEW] |
-| `governance_result` | enum | PERMIT / DENY / HEM_PENDING / STALLED |
+| `session_xpid` | string | GEC-bound Cross-Principal Identifier. Derived from KIA at session open. |
+| `session_state` | enum | ACTIVE / HEM_PENDING / STALLED / PLAN_B_ACTIVE / CLOSED |
+| `eod_id` | string | UUID of committed Expected Outcome Declaration. |
+| `da_production` | object \| null | NEW in -03. REQUIRED when cedar_action is Action::ProduceAGA; null or absent otherwise. |
+| `da_production.derived_from.direct_inputs` | string[] | da_id values this AGA derives directly from (MAY be empty). |
+| `da_production.derived_from.context_inputs` | string[] | da_id values consulted as context (MAY be empty). |
+| `da_production.external_disclosure.disclosed_to_class` | enum | NONE / HUMAN_PRINCIPAL / EXTERNAL_THIRD_PARTY |
+| `plan_b_ref` | string | Required in PLAN_B_ACTIVE state. References EOD plan_b_id. |
+| `what_changed` | string | Required in RETRY_CONTINUATION. Must reference DENY enrichment fields. |
+| `prior_denial_count` | integer | Cedar context attribute: total DENYs for this action in this session. |
 | `gar_record_id` | string | Reference to the GAR entry for this cycle |
 
-**Minimal Cedar policy example — retry depth gate:**
+**Minimal `da_production` example — a Transition Request producing a derived artifact:**
 
-```cedar
-// Require HEM escalation when denial depth exceeds threshold
-permit (
-  principal,
-  action == Action::"ExecuteCycle",
-  resource
-)
-when {
-  context.time_budget_remaining > 0 &&
-  context.intent_valid == true &&
-  context.tier_0a_check_passed == true &&
-  context.prior_denial_count <= 3
-};
-
-// Force HEM after 3 denials on high-risk action class
-forbid (
-  principal,
-  action == Action::"HighRiskTransition",
-  resource
-)
-when {
-  context.prior_denial_count > 3
-};
+```json
+{
+  "mandate_jwt": "<compact-serialized MJWT>",
+  "cedar_action": "atp:booking:summarize_itinerary",
+  "idp": { "...": "..." },
+  "da_production": {
+    "derived_from": {
+      "direct_inputs": ["da-7f3a...booking", "da-91cc...weather"],
+      "context_inputs": ["da-4b21...preferences"]
+    },
+    "external_disclosure": {
+      "disclosed_to_class": "HUMAN_PRINCIPAL",
+      "disclosed_at": "2026-09-04T10:15:00Z"
+    }
+  }
+}
 ```
 
 ### Government and regulators
 
-AEP is the protocol that makes "AI accountability" an engineering specification rather than a policy aspiration. Each governed execution cycle produces a verifiable record: what the agent intended, what policy evaluated it, what the result was, and when. Regulators requiring audit trails for automated decisions have, in AEP, a protocol that makes those trails non-suppressible at the kernel layer.
+AEP is the protocol that makes "AI accountability" an engineering specification rather than a policy aspiration. Each governed execution cycle produces a verifiable record: what the agent intended, what policy evaluated it, what the result was, and when.
 
-**New in AEP-02:** The Expected Outcome Declaration (EOD) creates a pre-session commitment record. Before any action is taken, the agent has declared what it expects to achieve and what its fallback strategy is. A regulator reviewing a session can compare the session's actual trajectory against the EOD's pre-declared expectations — a form of pre-commitment accountability that no existing agent framework provides.
+**New in AEP-03:** when an agent's action produces derived data — a summary, an aggregation, a synthesized recommendation — the lineage from that data back to its governed sources is now computed by the kernel, not merely claimed by the agent. A regulator investigating a decision based on derived data can trace exactly which upstream artifacts it came from, and confirm the residency classification that applied at the time was computed correctly from data already known to be valid — not asserted by the same agent whose output is under review.
 
-**New in AEP-02:** The XPID binding requirement closes the agent identity gap. Every session is bound to a verified Party Registry entry; the agent operating in the session cannot substitute another identity. This makes the accountability chain from action to agent provider verifiable and non-repudiable.
+**From -02, still current:** The Expected Outcome Declaration (EOD) creates a pre-session commitment record; a regulator reviewing a session can compare its actual trajectory against pre-declared expectations. The XPID binding requirement makes the accountability chain from action to agent provider verifiable and non-repudiable.
 
-Relevant regulatory alignment: EU AI Act Article 12 (record-keeping for high-risk AI), EU AI Act Article 9 (technical risk management — EOD is a pre-session risk management artifact), Japan AI Promotion Act (accountability requirements), NIST AI RMF (MEASURE 2.5 — AI system outputs are monitored; the OTel mapping is the observability implementation).
+Relevant regulatory alignment: EU AI Act Article 12 (record-keeping for high-risk AI), EU AI Act Article 9 (technical risk management), NIST AI RMF (MEASURE 2.5).
 
 For collaboration on jurisdiction-specific execution governance requirements: [tomsato@myauberge.jp](mailto:tomsato@myauberge.jp)
 
@@ -130,71 +125,85 @@ For collaboration on jurisdiction-specific execution governance requirements: [t
 
 ## Core technology
 
-**Problem:** Agentic AI systems execute sequences of actions with no standard for what governance checks run between them. Post-hoc audit is possible; pre-action governance is not standardised. Agents that get stuck retry silently until budget exhaustion. Agents from different providers can substitute identities in multi-agent sessions. No pre-session commitment exists against which the session's actual trajectory can be audited.
+**Problem:** Agentic AI systems execute sequences of actions with no standard for what governance checks run between them — and, until -03, no defined mechanism for how a governed action that produces new data actually gets that data's governance metadata computed correctly rather than merely asserted.
 
-**Mechanism:** AEP defines the execution cycle as a protocol. At session open, the GEC binds the agent's XPID from the KIA Party Registry and records the submitted EOD. Each cycle runs a fixed sequence: IDP validation → CAP Tier 0-A pre-check → XPID consistency check → full Cedar policy evaluation → HEM trigger evaluation → action execution → GAR record. The sequence is normative; skipping any step produces a non-conforming implementation. When the agent cannot make progress, the STALLED state surfaces this to the human principal before budget exhaustion.
+**Mechanism:** AEP defines the execution cycle as a protocol. At session open, the GEC binds the agent's XPID from the KIA Party Registry and records the submitted EOD. Each cycle runs a fixed sequence: IDP validation → CAP Tier 0-A pre-check → XPID consistency check → full Cedar policy evaluation → state machine validation → **DAM lineage and residency validation, when applicable** → action execution → GAR record. The sequence is normative; skipping any step produces a non-conforming implementation.
 
-**Output:** A GAR record for every cycle — governance decision, Cedar result, HEM evaluation outcome, resource consumption, timing, XPID binding, EOD outcome — that proves the governed loop ran correctly on every action. At session close, the EOD_OUTCOME field records whether the session's actual trajectory matched, partially matched, or deviated from the pre-declared EOD.
+**Output:** A GAR record for every cycle — governance decision, Cedar result, HEM evaluation outcome, XPID binding, EOD outcome, and, for data-producing actions, the resolved lineage and computed residency of the resulting artifact — that proves the governed loop ran correctly on every action.
 
-**Who verifies it:** Platform engineers auditing agent deployments, compliance teams demonstrating Article 12 record-keeping, security operations teams monitoring soos.aep.* OTel spans for XPID anomalies and retry patterns, and regulators requiring pre-session commitment accountability.
+**Who verifies it:** Platform engineers auditing agent deployments, compliance teams demonstrating Article 12 record-keeping, security operations teams monitoring soos.aep.* OTel spans, data governance teams tracing artifact lineage, and regulators requiring pre-session commitment accountability.
 
 ---
 
 ## The five session states
 
-AEP-02 formalises the session state model. A session is always in one of five states:
+A session is always in one of five states:
 
 **ACTIVE** — the normal execution state. The agent runs the SENSE-REASON-PLAN-ACT-OBSERVE loop. The GEC accepts Transition Requests.
 
-**HEM_PENDING** — the session has escalated to a human principal for a decision on a specific action. The agent cannot submit ACT until the human principal responds. This is not an error; it is a governance checkpoint.
+**HEM_PENDING** — the session has escalated to a human principal for a decision on a specific action. The agent cannot submit ACT until the human principal responds.
 
-**STALLED** — the agent cannot make progress without human direction. No single action triggered HEM; the session as a whole has hit a progress boundary. The GEC notifies the human principal, surfaces the stall reason, and waits for direction. Stall reasons: STALL_DENY_THRESHOLD (too many consecutive DENYs), STALL_PATH_EXHAUSTED (no viable path to goal), STALL_PLAN_B_BLOCKED (Plan B also exhausted), STALL_ITERATION_LIMIT.
+**STALLED** — the agent cannot make progress without human direction. No single action triggered HEM; the session as a whole has hit a progress boundary. Stall reasons: STALL_DENY_THRESHOLD, STALL_PATH_EXHAUSTED, STALL_PLAN_B_BLOCKED, STALL_ITERATION_LIMIT.
 
-**PLAN_B_ACTIVE** — the pre-declared EOD Plan B has been activated. The agent now executes toward the Plan B target state. Every IDP must carry plan_b_ref. The session closes with PLAN_B_ACHIEVED if the Plan B target is reached.
+**PLAN_B_ACTIVE** — the pre-declared EOD Plan B has been activated. Every IDP must carry plan_b_ref. The session closes with PLAN_B_ACHIEVED if the Plan B target is reached.
 
 **CLOSED** — the session has terminated on any path. AEP_SESSION_CLOSED is written; the GAR generates a Session Audit Record.
 
 ---
 
+## DAM Lineage and Residency Validation (Step 4a)
+
+| Stage | What happens |
+|---|---|
+| Trigger | `da_production` present on the Transition Request (required when cedar_action is Action::ProduceAGA) |
+| Resolve | Every da_id in `direct_inputs` and `context_inputs` resolved against existing artifacts |
+| Reject — unresolvable | Any reference that doesn't resolve → DENY, `DA_LINEAGE_UNRESOLVED` |
+| Validate lifecycle | Every `direct_inputs` artifact confirmed in `VALID` lifecycle state |
+| Reject — not valid | A direct_inputs artifact not yet VALID → DENY, `DA_LINEAGE_NOT_VALID` (its own residency isn't final yet) |
+| Compute | New artifact's `data_residency` = at least as restrictive as the most restrictive among `direct_inputs` (null imposes no restriction) |
+| Commit (Step 5) | State transition + AGA Governance Envelope committed together, one signed write |
+
+Step 4a performs no write of its own — its failure aborts the transition before any signed write for it has occurred. This is the enforcement point for DAM's narrowing rule: not a declaration the agent's `da_production` makes true by asserting it, but a computation the GEC performs from already-governed, already-VALID data.
+
+---
+
 ## The Expected Outcome Declaration (EOD)
 
-The EOD is the pre-session commitment structure that AEP-02 introduces. Before the first SENSE delivery, the agent submits an EOD declaring:
+The EOD is the pre-session commitment structure AEP introduced in -02, unchanged in -03. Before the first SENSE delivery, the agent submits an EOD declaring:
 
 - **Primary outcome** — the target SO state the agent expects to reach, with a confidence score.
-- **Acceptance envelope** — the conditions that constitute success. What must be true in the SO Zone A for the session to be considered GOAL_ACHIEVED.
-- **Plan B** — the fallback target state and the conditions under which Plan B may activate. The agent pre-commits to Plan B before the session starts; this is not improvised at runtime.
+- **Acceptance envelope** — the conditions that constitute success.
+- **Plan B** — the fallback target state and the conditions under which Plan B may activate, pre-committed before the session starts.
 
 The EOD is immutable after submission. The GEC records it as EOD_COMMITTED and carries eod_id in every AEP_SENSE_DELIVERED entry for the life of the session. At session close, the GEC evaluates the session's final state against the EOD's acceptance_envelope and records EOD_OUTCOME (MATCHED, PARTIAL, PLAN_B_MATCHED, UNMATCHED) in AEP_SESSION_CLOSED.
-
-A session that deviates from its EOD is not necessarily non-conforming — it may have activated Plan B correctly. The EOD makes the distinction auditable.
 
 ---
 
 ## Use cases
 
+**A summarization action with governed lineage**
+
+A travel-planning agent's action produces a trip summary derived from a booking confirmation and a weather forecast, consulting the traveler's stated preferences as context. The Transition Request carries `da_production` with `direct_inputs: [booking_da_id, weather_da_id]` and `context_inputs: [preferences_da_id]`. The GEC resolves all three, confirms the booking and weather artifacts are VALID, and computes the summary's data_residency as at least as restrictive as whichever of the two direct inputs carries the tighter classification. The summary artifact and the state transition that produced it commit together, in one signed write. A later audit can trace the summary back through its declared lineage to the exact governed artifacts it was built from.
+
 **Safe deployment of a financial reconciliation agent**
 
-A bank deploys an agent to reconcile daily transactions. Before the first SENSE delivery, the agent submits an EOD declaring its expected outcome (all transactions reconciled with zero variance) and Plan B (flag unreconciled items for manual review if auto-reconciliation fails after 5 iterations). AEP-02's XPID binding ensures the reconciliation agent's Party Registry entry is verified at session open; no other agent can claim this session's identity. When the agent encounters an anomalous transaction that exhausts its retry capacity, the STALLED state fires before budget exhaustion, the human principal receives the stall notification with the prior DENY chain, and activates Plan B. The EOD_OUTCOME at session close records PLAN_B_MATCHED. The bank's compliance evidence covers the full lifecycle: pre-session commitment, execution, stall, Plan B activation, and outcome.
-
-**Multi-session research agent with retry governance**
-
-A research agent is given a 10-hour mandate to gather and synthesise documents. After several consecutive DENYs on a specific data source access action (the Cedar policy was narrower than expected), the session enters STALLED (stall reason: STALL_DENY_THRESHOLD). The stall notification surfaces the prior DENY chain to the operator. The operator issues a STALL_DIRECTION of REDIRECT_GOAL with an updated goal state. The session resumes with STALL_RESOLVED trigger; the agent queries the Transition Graph (mandatory after STALL_RESOLVED) and continues. The OTel spans show the full timeline: DENYs accumulating, STALLED entry, STALL_RESOLVED, and subsequent progress.
+A bank deploys an agent to reconcile daily transactions. Before the first SENSE delivery, the agent submits an EOD declaring its expected outcome and Plan B. AEP's XPID binding ensures the reconciliation agent's Party Registry entry is verified at session open. When the agent encounters an anomalous transaction that exhausts its retry capacity, the STALLED state fires before budget exhaustion, the human principal receives the stall notification, and activates Plan B. The EOD_OUTCOME at session close records PLAN_B_MATCHED.
 
 **Multi-agent deployment with XPID verification**
 
-Three agents from different providers are executing in a cluster on a shared SO Cluster. AEP-02's XPID binding at session open ensures each agent is tied to its KIA-verified Party Registry entry. At Step 1a of the GEC execution sequence, every ACT is checked for XPID consistency — a Mandate JWT that does not match the session's bound XPID is rejected immediately and the session is terminated. Security monitoring on soos.aep.session_xpid OTel attributes (OTel-CONF-03) alerts on any mid-session XPID change before it becomes an exploitation attempt.
+Three agents from different providers are executing in a cluster on a shared SO Cluster. XPID binding at session open ties each agent to its KIA-verified Party Registry entry. At Step 1a of the GEC execution sequence, every ACT is checked for XPID consistency — a mismatch terminates the session immediately.
 
 ---
 
 ## How this builds on existing work
 
-**GNAP (RFC 9635)** handles the authorisation grant that establishes a governed session — what the agent is permitted to do, issued by the authorisation server before execution begins. AEP specifies what happens inside that session: the execution loop that runs within the GNAP-granted authorisation. GNAP is the door; AEP is the governed corridor behind it.
+**GNAP (RFC 9635)** handles the authorisation grant that establishes a governed session. AEP specifies what happens inside that session. GNAP is the door; AEP is the governed corridor behind it.
 
-**Cedar (Amazon open source)** is the policy engine that AEP's XPID consistency check and full policy evaluation call. AEP-02 adds prior_denial_count and last_deny_code as Cedar context attributes, enabling Cedar policies to gate on retry depth — a capability not present in AEP-01.
+**Cedar (Amazon open source)** is the policy engine that AEP's XPID consistency check and full policy evaluation call. `prior_denial_count` and `last_deny_code` are Cedar context attributes, enabling policies to gate on retry depth.
 
-**W3C PROV-DM** provides the provenance data model that AEP's execution records align with. Each AEP cycle record is a PROV-DM Activity; each agent action is a PROV-DM Entity use/generation pair. The EOD_COMMITTED entry at session open provides a pre-session PROV-DM Agent declaration.
+**DAM (draft-sato-soos-dam), new dependency in -03** defines the AGA schema, retention rules, and write-authority model that Step 4a enforces. AEP doesn't own any of that — its contribution is the submission mechanism (`da_production`) and the enforcement point at which DAM's data_residency narrowing rule is actually computed rather than merely declared.
 
-**OpenTelemetry (OTel)** is integrated in AEP-02 as the operational observability layer. The soos.aep.* namespace is a sub-namespace of the soos.governance.* namespace defined in GAR. The OTel spans complement, not replace, the Event Stream.
+**OpenTelemetry (OTel)** is the operational observability layer. The soos.aep.* namespace is a sub-namespace of the soos.governance.* namespace defined in GAR.
 
 ---
 
@@ -202,25 +211,23 @@ Three agents from different providers are executing in a cluster on a shared SO 
 
 **Key security properties:** The AEP execution loop is non-bypassable at the protocol level. A conforming implementation cannot execute an action without first running the CAP Tier 0-A pre-check, evaluating HEM trigger conditions, and passing the XPID consistency check. Every cycle produces a GAR record before the result is returned.
 
-**Session fixation [NEW]:** An adversary who supplies a client-side XPID at session initiation could cause the GEC to associate the session with a different agent's Party Registry record. CONF-AEP-12 prohibits client-supplied XPIDs; the GEC MUST derive XPID from the KIA-verified Party Registry. Implementations MUST audit INVALID_XPID_CLAIM rejections as potential session fixation attempts.
+**Lineage validation is atomic with the write it governs (new in -03):** no da_id is minted and no signature is produced during Step 4a validation — a request that fails lineage or residency checks leaves no trace beyond the rejection itself. This closes the same class of gap the suite has fixed elsewhere: minting governance metadata before knowing whether the underlying computation is valid would mean an already-signed artifact might need to be undone, which this suite's tamper-evidence model does not support.
 
-**XPID binding integrity [NEW]:** Step 1a of the GEC execution sequence verifies XPID consistency at every ACT. An XPID_MISMATCH terminates the session immediately and is recorded in GAR as a critical security event. OTel-CONF-03 requires monitoring systems to alert on any mid-session XPID change.
+**Session fixation:** An adversary who supplies a client-side XPID at session initiation could cause the GEC to associate the session with a different agent's Party Registry record. The GEC MUST derive XPID from the KIA-verified Party Registry; client-supplied XPIDs are rejected outright.
 
-**Cross-principal scope leakage [NEW]:** In multi-agent deployments, XPID binding prevents an agent from claiming another provider's Cedar residual. Cedar policies SHOULD be scoped to the XPID.
+**XPID binding integrity:** Step 1a of the GEC execution sequence verifies XPID consistency at every ACT. A mismatch terminates the session immediately and is recorded in GAR as a critical security event.
 
-**STALLED state exploitation [NEW]:** An adversary who can induce artificial DENYs may attempt to drive an agent into STALLED state as a denial-of-service. The stall notification includes the prior DENY chain; the GEC SHOULD log stall-inducing DENY patterns that are inconsistent with the SO Type state machine.
+**STALLED state exploitation:** An adversary who can induce artificial DENYs may attempt to drive an agent into STALLED state as a denial-of-service. The stall notification includes the prior DENY chain; the GEC SHOULD log stall-inducing DENY patterns inconsistent with the SO Type state machine.
 
-**Budget exhaustion attacks:** An adversary who can delay a governed agent may attempt to exhaust its iteration budget. AEP-02's STALLED state and STALL_DENY_THRESHOLD bound the retry depth before mandatory human review, limiting the effectiveness of exhaustion attacks.
-
-**Session revocation:** When a session revocation signal is received, the AEP loop MUST halt after the current atomic operation completes (CLEAN state) or immediately (PARTIAL state). Implementations MUST NOT begin a new cycle after receiving a revocation signal.
+**Session revocation:** When a session revocation signal is received, the AEP loop MUST halt after the current atomic operation completes (CLEAN state) or immediately (PARTIAL state).
 
 ---
 
 ## SOOS stack context
 
-AEP sits at **Level 2 — Session Foundation**, the operational heart of the SOOS stack. It depends on IDP (Intent Declaration per cycle), CAP (Tier 0-A pre-check), HEM (trigger evaluation), GAR (record every cycle), KIA (XPID derivation at session open), and MAD (delegation context verification). It is the protocol that makes the governance stack operative.
+AEP sits at **Level 2 — Session Foundation**, the operational heart of the SOOS stack. It depends on IDP (Intent Declaration per cycle), CAP (Tier 0-A pre-check), HEM (trigger evaluation), GAR (record every cycle), KIA (XPID derivation at session open), MAD (delegation context verification), and — new in -03 — DAM (lineage and residency validation at Step 4a). It is the protocol that makes the governance stack operative.
 
-Related drafts: [IDP](/drafts/idp) · [HEM](/drafts/hem) · [CAP](/drafts/cap) · [GAR](/drafts/gar) · [KIA](/drafts/kia) · [MAD](/drafts/mad)
+Related drafts: [IDP](/drafts/idp) · [HEM](/drafts/hem) · [CAP](/drafts/cap) · [GAR](/drafts/gar) · [KIA](/drafts/kia) · [MAD](/drafts/mad) · [DAM](/drafts/dam)
 
 ---
 
