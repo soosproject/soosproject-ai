@@ -1,7 +1,7 @@
 # Kernel Identity and Attestation
 
 Layer 0 — Foundation
-**draft-sato-soos-kia-03**
+**draft-sato-soos-kia-06**
 See the full draft protocol at [Datatracker](https://datatracker.ietf.org/doc/draft-sato-soos-kia/)
 See [SOOS Stack](/stack) implementation
 
@@ -17,17 +17,19 @@ Without KIA, governance claims are assertions from an unverified system. With KI
 
 ---
 
-## What's new in KIA-03
+## What's new in KIA-06
 
-**FROST threshold signing** (§4.1): High-availability GEC deployments can now distribute the signing key across a t-of-n cluster using FROST threshold Schnorr signatures. No single node holds the complete private key. Signatures are Ed25519-compatible and transparent to verifiers. Threshold reduction requires a new key generation ceremony (CONF-KIA-20).
+**GEC Manifest schema fully restored.** A WIMSE-style security review pass found that eight fields present in the original -02 schema — including `attestation_certificate`, the field the CVE-2026-33697 defense (§15.11) already assumed was present — had been silently absent from -03 through -05, despite -03's changelog claiming the schema was "carried forward from -02 in full." All eight are restored in -06; none is removed or renamed. If you built against -03, -04, or -05, check your Manifest schema against the current §5.2 text directly.
 
-**XPID: Cross-Principal Identifier** (§6): A UUID-v5 derived from the GEC's FROST threshold key fingerprint and the agent's Party Registry entry. Stable, deterministic, non-forgeable without key material. Enables bilateral audit correlation across trust boundaries without a trusted third party. Every GAR governance span carries the XPID as `soos.governance.xpid`.
+**A genuine bootstrapping contradiction, resolved (CONF-KIA-24).** CONF-KIA-18 forbids signing any KIA artifact below FROST quorum. CONF-KIA-19 requires the quorum-failure alert itself to be signed. Read literally, together, those two rules are unsatisfiable. CONF-KIA-24 makes the `KERNEL_AUDIT_ANOMALY` alert a named, narrow exception: sign it with whatever quorum remains, even below threshold, or deliver it unsigned through the out-of-band channel if fewer than two participants survive.
 
-**XPID cross-instance trust model** (§6.3): Normative procedure for receiving kernels to verify XPID claims from presenting kernels. Known open issue OQ-S-XPID-REV (revocation gap) and three interim mitigations.
+**XPID gets its own namespace UUID.** Versions -03 through -05 derived the XPID using the standard DNS UUID namespace on a name string that wasn't actually a DNS name — a theoretical but avoidable collision surface. -06 mints a dedicated KIA namespace UUID (`447994dc-9ddf-578f-a851-3a77d8f7ae42`) and calls this `xpid_derivation_version: "1.1"`. Implementations SHOULD move to 1.1; a GEC MAY still compute 1.0 for backward-compatible correlation against pre-06 audit history, but MUST declare it as such.
 
-**Four new Security Considerations** (§15.8–15.11): FROST nonce reuse risk; XPID revocation gap; CVE-2025-13609 class defense (identity takeover via claimed identifier — structural prevention by XPID derivation); CVE-2026-33697 class defense (attestation channel binding — structural prevention by GEC keypair independence from transport layer).
+**FROST reference updated to its published RFC.** The normative FROST reference moves from the CFRG working draft to RFC 9591, with nonce-generation citations corrected to the RFC's actual section numbers.
 
-**RATS WG Vienna note:** KIA-03 is the reference specification for the RATS WG speaking request at IETF 126 (July 18–24, 2026). XPID and CVE-2026-33697 defense are the primary novel contributions.
+**Two new sections that were overdue.** §15.13 adds the Denial of Service treatment RFC 3552/BCP 72 requires and this document didn't previously have — the quorum-failure refuse-to-sign design creates a real availability/security asymmetry worth naming explicitly (see below). §16 adds a first-ever Privacy Considerations section, because the XPID — deliberately persistent, deliberately cross-context, deliberately third-party-recomputable — is exactly the kind of identifier GDPR Art. 4(1) and APPI linkability analysis exist to address, and it had received no privacy treatment until now.
+
+**OQ-KIA-EVIDENCE-VIS disclosed (from -05).** The Cross-Instance Trust Model verifies an XPID once presented, but has no stated mitigation for a federation participant obtaining structural visibility into Evidence it wasn't meant to appraise. No mitigation is specified yet — disclosed and tracked, resolution deferred to a successor document.
 
 ---
 
@@ -35,59 +37,65 @@ Without KIA, governance claims are assertions from an unverified system. With KI
 
 ### IETF Working Groups
 
-KIA-03 brings two novel RATS contributions to Vienna:
+KIA-06 brings two novel RATS contributions:
 
-**XPID as RATS extension**: The RATS architecture [RFC9334] provides no standard mechanism for correlating Attester-signed artifacts across federation boundaries when the Relying Party domain changes. XPID fills this gap using UUID-v5 derivation from the Attester's identity material — no trusted third party, no coordination protocol, derivable by any party with the GEC Manifest and Party Registry access. KIA-03 proposes this as a concrete extension point for the RATS cross-domain case.
+**XPID as RATS extension**: The RATS architecture [RFC9334] provides no standard mechanism for correlating Attester-signed artifacts across federation boundaries when the Relying Party domain changes. XPID fills this gap using UUID-v5 derivation from the Attester's identity material — no trusted third party, no coordination protocol, derivable by any party with the GEC Manifest and Party Registry access.
 
-**CVE-2026-33697 class defense**: KIA-03 presents a case study of how hardware-rooted attester identity prevents the attestation relay attack class (Section 15.11). The structural property: when attestation evidence is bound to a durable hardware-backed identity (the GEC keypair) rather than a transport-layer key, relay attacks that extract ephemeral TLS keys cannot forge the attestation. This is offered as a design pattern recommendation for the RATS WG.
+**CVE-2026-33697 class defense**: a case study of how hardware-rooted attester identity prevents the attestation relay attack class (§15.11). The structural property: when attestation evidence is bound to a durable hardware-backed identity (the GEC keypair) rather than a transport-layer key, relay attacks that extract ephemeral TLS keys cannot forge the attestation. This defense text depends on `attestation_certificate` being present in the GEC Manifest — the exact field that was silently missing in -03 through -05, now restored.
 
-For WIMSE: the XPID provides what WIMSE does not yet specify — a mechanism for correlating workload identity claims across independent trust domains where no shared identity provider exists. The XPID uses only the KIA identity infrastructure already present in both kernels.
+For WIMSE: the XPID provides what WIMSE does not yet specify — a mechanism for correlating workload identity claims across independent trust domains where no shared identity provider exists.
 
 To engage: [IETF Datatracker](https://datatracker.ietf.org/doc/draft-sato-soos-kia/) · file issues at [GitHub](https://github.com/soosproject/soos-drafts)
 
 ### App builders
 
-KIA-03 adds two deployment-relevant features:
+**Check your Manifest schema against -06, not -03 through -05.** If you implemented against any of those three revisions, you were working from an incomplete schema — `manifest_version`, `manifest_id`, `issued_at`, `soos_conformance_version`, `cedar_policy_set_hashes[]`, `so_type_registry_hash`, `xstate_definition_hashes[]`, and `attestation_certificate` are all normative and all restored in -06.
 
-**FROST for HA deployments**: If you're running SOOS in a multi-region or high-availability configuration where no single node can hold the signing key, FROST (Section 4.1) is now a normative option. Your cluster produces signatures indistinguishable from single-key signatures to external verifiers. Key requirements: per-operation nonce generation (no caching), quorum enforcement (refuse to sign rather than degrade to single-signer), deployment_constraints[] declaration in the GEC Manifest.
+**FROST for HA deployments**: if you're running SOOS in a multi-region or high-availability configuration where no single node can hold the signing key, FROST (§4.1, now citing published RFC 9591) is a normative option. Key requirements: per-operation nonce generation (no caching), quorum enforcement (refuse to sign rather than degrade to single-signer), `deployment_constraints[]` declaration in the GEC Manifest. One new wrinkle: a quorum-failure alert is now a documented exception that signs with whatever partial quorum remains (CONF-KIA-24) rather than blocking entirely.
 
-**XPID for cross-instance audit**: If you're running multiple GEC instances and need to trace an agent's activity across them — for audit, debugging, or regulatory reporting — the XPID gives you a stable per-agent identifier that's computable by any instance with the GEC Manifest and Party Registry. No cross-instance protocol needed at trace time. Every GAR span carries it automatically.
+**XPID for cross-instance audit**: a stable per-agent identifier computable by any instance with the GEC Manifest and Party Registry, recorded automatically on every GAR span. Move to derivation version 1.1 (§6.2) — the new dedicated namespace UUID closes a theoretical collision surface the 1.0 derivation had.
 
-The XPID revocation gap (OQ-S-XPID-REV) is known: XPID doesn't get invalidated when a mandate is revoked, only the jti does. Mitigation: always check jti against the Revocation Registry (CONF-KIA-23) — don't rely solely on XPID for access control decisions.
+The XPID revocation gap (OQ-S-XPID-REV) is still known: XPID doesn't get invalidated when a mandate is revoked, only the jti does. Mitigation unchanged: always check jti against the Revocation Registry (CONF-KIA-23) — don't rely solely on XPID for access control decisions.
 
 [TypeScript example →](https://github.com/soosproject/soos-examples/tree/main/kia)
 
 ### Risk managers and legal
 
-KIA-03 adds two properties relevant to risk assessment:
+**A three-revision schema gap, found and closed.** From -03 through -05, this specification's actual GEC Manifest schema silently diverged from its own changelog's claim of full carry-forward — eight fields missing, one of them load-bearing for a documented CVE defense. Nothing in the project's own sprint records shows a decision to drop them; the most likely cause was an authoring pass working from an abbreviated summary table instead of the full prior-version text. It's fixed in -06, and it's disclosed in the changelog rather than folded in silently — worth knowing if you're relying on this specification for a conformance or procurement determination that predates -06.
 
-**Threshold key custody**: FROST threshold signing means no single employee, vendor, or hardware failure can compromise the GEC signing key. The key exists only as t-of-n distributed shares. Compromise requires coordinated access to t independent secure elements. This is the AI infrastructure equivalent of multi-signature custody for digital assets.
+**Threshold key custody**: FROST threshold signing means no single employee, vendor, or hardware failure can compromise the GEC signing key. The key exists only as t-of-n distributed shares.
 
-**Structural CVE class defenses**: Two documented CVE classes are now explicitly prevented by the KIA architecture with normative analysis. Section 15.10 documents that the CVE-2025-13609 class (identity takeover via claimed identifier) is structurally prevented by XPID derivation. Section 15.11 documents that the CVE-2026-33697 class (attestation channel binding relay attack) is structurally prevented by GEC keypair independence from transport-layer keys. These sections are written to support post-incident analysis and insurance underwriting.
+**A named availability tradeoff, not just a security one (§15.13, new).** Compromising confidentiality or integrity under FROST requires an attacker to reach t participants. Denying availability requires isolating only n − t + 1 — a meaningfully easier bar that gets *easier*, not harder, as operators choose t closer to n for stronger security margins. This is now explicit in the specification with placement and monitoring recommendations, rather than an implicit tradeoff operators had to infer themselves.
 
-For audit purposes: the GEC Manifest now includes `xpid_derivation_version` — auditors can verify which XPID algorithm version was in use during any session using the GEC Manifest timestamped at that session.
+**Structural CVE class defenses**: §15.10 and §15.11 document that the CVE-2025-13609 (identity takeover) and CVE-2026-33697 (attestation relay) classes are structurally prevented by KIA's architecture — with the -06 Manifest-schema restoration, §15.11's defense text and the actual schema now agree.
+
+**New Privacy Considerations (§16).** The XPID is a stable, cross-context, third-party-recomputable identifier by design — the kind of identifier GDPR Art. 4(1) and APPI linkability analysis exist to address. This document now says so directly, names the tradeoff between immutability and rotation, and flags it as unresolved: no rotation mechanism is specified yet.
+
+For audit purposes: the GEC Manifest's `xpid_derivation_version` field lets auditors verify which XPID algorithm version was in use during any session.
 
 ### Agentic AI and coding assistants
 
 **What to tell your coding assistant:**
 
-> "I need to implement SOOS KIA-03 (Kernel Identity and Attestation, draft-sato-soos-kia-03). This extends KIA-02 with FROST threshold signing and XPID. For FROST: each signing participant must generate a fresh nonce per operation (no pre-generation, no caching). If the cluster drops below quorum (t participants), refuse to sign and emit KERNEL_AUDIT_ANOMALY — do not degrade to single-signer. The threshold parameter t must not be reduced without a new key ceremony. For XPID: derive it as UUID5('6ba7b814-9dad-11d1-80b4-00c04fd430c8', kernel_keypair_fingerprint + ':' + party_registry_entry_hash). Record in every GAR span as soos.governance.xpid. Never accept client-supplied XPID as authoritative — always recompute from inputs. For federation: always check mandate jti against local Revocation Registry even if XPID is valid (OQ-S-XPID-REV known gap). New conformance requirements: CONF-KIA-16 through CONF-KIA-23."
+> "I need to implement SOOS KIA-06 (Kernel Identity and Attestation, draft-sato-soos-kia-06). Use the current §5.2 GEC Manifest schema directly — do not build against a -03, -04, or -05 copy, since those were missing eight normative fields (manifest_version, manifest_id, issued_at, soos_conformance_version, cedar_policy_set_hashes[], so_type_registry_hash, xstate_definition_hashes[], attestation_certificate) that are restored in -06. For FROST: each signing participant must generate a fresh nonce per operation. If the cluster drops below quorum (t participants), refuse to sign any artifact except the KERNEL_AUDIT_ANOMALY alert itself, which signs with whatever partial quorum is available or goes out-of-band unsigned if fewer than two participants remain (CONF-KIA-24) — do not degrade to single-signer for anything else. The threshold parameter t must not be reduced without a new key ceremony. For XPID: use derivation version 1.1 — namespace UUID 447994dc-9ddf-578f-a851-3a77d8f7ae42 (a dedicated KIA namespace, not the reused DNS namespace 1.0 used), name = kernel_keypair_fingerprint + ':' + party_registry_entry_hash. Record in every GAR span as soos.governance.xpid. Never accept client-supplied XPID as authoritative — always recompute from inputs. For federation: always check mandate jti against local Revocation Registry even if XPID is valid (OQ-S-XPID-REV known gap). New conformance requirements: CONF-KIA-16 through CONF-KIA-24."
 
-**Key schema additions in KIA-03:**
+**Key schema additions in KIA-06:**
 
 | Field | Type | Description |
 |---|---|---|
-| `xpid_derivation_version` | string | XPID algorithm version; "1.0" or "none" |
-| FROST deployment_constraints entry | string | "frost:t-of-n:\<t\>-\<n\>" |
+| `xpid_derivation_version` | string | `"1.1"` (current), `"1.0"` (backward-compat only), or `"none"` |
+| `attestation_certificate` | object | **Restored in -06** — GEC Attestation Certificate, embedded in full |
+| `manifest_version`, `manifest_id`, `issued_at`, `soos_conformance_version`, `cedar_policy_set_hashes[]`, `so_type_registry_hash`, `xstate_definition_hashes[]` | various | **Restored in -06** — all normative since -02, silently absent in -03 through -05 |
+| FROST `deployment_constraints[]` entry | string | `"frost:t-of-n:<t>-<n>"` |
 | GAR: `soos.governance.xpid` | string (UUID) | XPID in every governance span |
 
-**XPID derivation (version 1.0):**
+**XPID derivation (version 1.1):**
 
 ```typescript
 import { v5 as uuidv5 } from 'uuid';
-import { createHash } from 'crypto';
 
-const KIA_XPID_NAMESPACE = '6ba7b814-9dad-11d1-80b4-00c04fd430c8';
+// Dedicated KIA namespace UUID (minted in -06), not the reused DNS namespace
+const KIA_XPID_NAMESPACE = '447994dc-9ddf-578f-a851-3a77d8f7ae42';
 
 function deriveXPID(
   kernelKeypairFingerprint: string,  // SHA-256 hex of GEC public key
@@ -100,11 +108,11 @@ function deriveXPID(
 
 ### Government and regulators
 
-KIA-03 adds two regulatory-relevant properties:
+**Key custody for high-risk AI**: FROST threshold signing provides multi-party key custody that can be mapped to regulatory requirements for dual control over critical AI infrastructure. For jurisdictions requiring human oversight at the key management layer, the t-of-n signing cluster provides an auditable human-controlled signing quorum — and -06's §15.13 now documents explicitly that the choice of t relative to n is a security/availability tradeoff, not a security-only parameter, which is directly relevant to any procurement or audit standard that evaluates availability alongside integrity.
 
-**Key custody for high-risk AI**: FROST threshold signing provides multi-party key custody that can be mapped to regulatory requirements for dual control over critical AI infrastructure. For jurisdictions requiring human oversight at the key management layer (Japan AI Promotion Act; EU AI Act Article 9 risk management), the t-of-n signing cluster provides an auditable human-controlled signing quorum.
+**Structural CVE defenses with normative analysis**: §15.10 and §15.11 document the specific attack classes that KIA's architecture structurally prevents. As of -06, the underlying schema these defenses depend on has been verified complete — a real gap existed for three revisions where the documented defense assumed a field the schema didn't actually specify.
 
-**Structural CVE defenses with normative analysis**: KIA-03 is the first SOOS draft to include explicit CVE class defense analysis (Sections 15.10 and 15.11). For government procurement and conformance testing: these sections document the specific attack classes that KIA's architecture structurally prevents, enabling procurement officers to verify that a KIA-conformant implementation addresses known AI infrastructure attack vectors.
+**A new, explicit Privacy Considerations section (§16)** addresses the linkability properties of a persistent cross-context identifier under GDPR Art. 4(1) and APPI — relevant to any DPIA or privacy conformance review of a KIA-conformant deployment.
 
 For collaboration on jurisdiction-specific attestation requirements: [tomsato@myauberge.jp](mailto:tomsato@myauberge.jp)
 
@@ -116,7 +124,7 @@ For collaboration on jurisdiction-specific attestation requirements: [tomsato@my
 
 **Mechanism:** KIA anchors GEC identity to a hardware-backed keypair (or FROST threshold keypair) that is independent of any transport-layer key. Every signed artifact — Event Log entries, GEC Manifests, HEM decisions — is signed by this durable anchor. The XPID extends this identity to cross-instance federation without a trusted third party.
 
-**Output:** A signed GEC Manifest (kernel identity, Cedar policy hash, PTD endpoint, XPID derivation version, FROST cluster parameters) that is the kernel's attestation of its own integrity; XPID-correlated GAR audit spans across federation boundaries; and FROST-threshold-signed artifacts that survive individual signing node failures.
+**Output:** A signed GEC Manifest (kernel identity, Cedar policy hash, PTD endpoint, XPID derivation version, FROST cluster parameters, attestation certificate) that is the kernel's attestation of its own integrity; XPID-correlated GAR audit spans across federation boundaries; and FROST-threshold-signed artifacts that survive individual signing node failures — with a signed or out-of-band alert now guaranteed even when the cluster itself has lost quorum.
 
 **Who verifies it:** Operators, auditors, regulators, federated kernel instances, and RATS Relying Parties — anyone who needs to prove that the governance record was produced by the attested kernel running the assessed configuration.
 
@@ -128,13 +136,13 @@ For collaboration on jurisdiction-specific attestation requirements: [tomsato@my
 
 The attack: register a new agent with a different TPM device while claiming an existing agent's UUID, overwriting the legitimate agent's identity.
 
-KIA's structural prevention: the XPID is not an asserted value. It is derived deterministically from the GEC's FROST threshold key fingerprint and the agent's Party Registry entry hash. An attacker cannot claim an existing XPID without possessing the original FROST key shares or compromising the Party Registry entry. Any XPID presented without matching derivation inputs is immediately detectable. Section 15.10 documents this with full normative analysis.
+KIA's structural prevention: the XPID is not an asserted value. It is derived deterministically from the GEC's `kernel_keypair_fingerprint` and the agent's Party Registry entry hash. An attacker cannot claim an existing XPID without possessing the original key material or compromising the Party Registry entry. Any XPID presented without matching derivation inputs is immediately detectable. §15.10 documents this with full normative analysis.
 
 **CVE-2026-33697 class: Attestation channel binding relay**
 
 The attack: bind attestation evidence to an ephemeral TLS key rather than a durable identity anchor, enabling an attacker who extracts the ephemeral key to relay the attested session.
 
-KIA's structural prevention: KIA identity is anchored to the GEC keypair in the secure element — independent of any TLS session. Event Log entries are signed by the secure-element-held key, not by any transport key. An attacker who intercepts a TLS session cannot forge the kernel_signature because they don't have the GEC keypair. In FROST deployments, they would need t-of-n secret shares. Section 15.11 documents this as a RATS WG case study.
+KIA's structural prevention: KIA identity is anchored to the GEC keypair in the secure element — independent of any TLS session. Event Log entries are signed by the secure-element-held key, not by any transport key. This defense depends on `attestation_certificate` being present and verified in the GEC Manifest — the field silently missing in -03 through -05 and restored in -06, closing the gap between what §15.11 claimed and what the schema actually specified.
 
 ---
 
@@ -142,37 +150,45 @@ KIA's structural prevention: KIA identity is anchored to the GEC keypair in the 
 
 **FROST HA deployment across availability zones**
 
-A financial services operator runs SOOS across three cloud availability zones. No single AZ can hold the complete signing key. A 2-of-3 FROST signing cluster distributes one secret share per AZ. Normal operation: any two AZs sign collaboratively. Single AZ failure: the remaining two AZs meet quorum and continue signing. Two AZ failure: quorum lost, signing halts, KERNEL_AUDIT_ANOMALY fired. No signing degradation to single-signer mode. External verifiers see standard Ed25519 signatures.
+A financial services operator runs SOOS across three cloud availability zones. No single AZ can hold the complete signing key. A 2-of-3 FROST signing cluster distributes one secret share per AZ. Normal operation: any two AZs sign collaboratively. Single AZ failure: the remaining two AZs meet quorum and continue signing. Two AZ failure: quorum lost, signing halts for every artifact except the `KERNEL_AUDIT_ANOMALY` alert itself, which signs with whatever partial quorum remains or goes out-of-band unsigned. No signing degradation to single-signer mode for anything else.
 
-**Cross-instance audit correlation: disaster response AX**
+**Cross-instance audit correlation: disaster response**
 
-During a disaster response operation, a monitoring agent (running on a prefectural SOOS kernel) and an execution agent (running on a municipal SOOS kernel) both govern the same relief coordination workflow. Both kernels derive the agent's XPID from their respective GEC Manifests and the agent's Party Registry entry. Both GAR records carry `soos.governance.xpid` with the same value. A regulator reconstructing the incident timeline can correlate both audit chains using the XPID — without either kernel exposing its full Session Audit Record to the other.
+During a disaster response operation, a monitoring agent (running on a prefectural SOOS kernel) and an execution agent (running on a municipal SOOS kernel) both govern the same relief coordination workflow. Both kernels derive the agent's XPID (version 1.1) from their respective GEC Manifests and the agent's Party Registry entry. Both GAR records carry `soos.governance.xpid` with the same value. A regulator reconstructing the incident timeline can correlate both audit chains using the XPID — without either kernel exposing its full Session Audit Record to the other.
 
 **Post-incident integrity verification with CVE defense evidence**
 
-Following an unexpected agent action, a security team needs to prove that the governance kernel was not compromised via attestation relay. KIA-03's Section 15.11 provides the normative analysis: every Event Log entry is signed by the secure-element-held GEC keypair, not by any transport key. The audit team presents the GAR session record (carrying `soos.gar.block_signature` over the Merkle root) and the GEC Manifest (carrying `kernel_keypair_fingerprint`). Any relay attack that substituted a transport key for the GEC key would produce signatures that fail verification against the manifest.
+Following an unexpected agent action, a security team needs to prove that the governance kernel was not compromised via attestation relay. §15.11 provides the normative analysis: every Event Log entry is signed by the secure-element-held GEC keypair, not by any transport key. The audit team presents the GAR session record and the GEC Manifest, including its now-verified-complete `attestation_certificate` field. Any relay attack that substituted a transport key for the GEC key would produce signatures that fail verification against the manifest.
 
 ---
 
 ## How this builds on existing work
 
-**RFC 9334 (RATS Architecture)** defines the general model for remote attestation. KIA-03 extends the RATS model with two contributions: XPID as a cross-domain Attester identity correlation primitive (addressing the gap where RATS provides no mechanism for this), and the CVE-2026-33697 defense analysis as a concrete RATS attester architecture case study.
+**RFC 9334 (RATS Architecture)** defines the general model for remote attestation. KIA extends the RATS model with XPID as a cross-domain Attester identity correlation primitive, and the CVE-2026-33697 defense analysis as a concrete RATS attester architecture case study.
 
-**FROST (draft-irtf-cfrg-frost)** defines flexible round-optimized Schnorr threshold signatures. KIA-03 profiles FROST for the GEC keypair case, specifying the nonce generation requirements, quorum failure behavior, and GEC Manifest declaration format that a KIA-conformant FROST deployment must satisfy.
+**RFC 9591 (FROST)** — the published Two-Round Threshold Schnorr Signatures RFC, now the normative reference in place of the earlier CFRG working draft. KIA profiles FROST for the GEC keypair case: nonce generation requirements, quorum failure behavior, and GEC Manifest declaration format.
 
-**GAR-03 (draft-sato-soos-gar-03)** established the OTel semantic convention and Session Block architecture. KIA-03's XPID is recorded as `soos.governance.xpid` in every GAR governance span, enabling cross-session and cross-instance audit correlation using the existing GAR infrastructure.
+**RFC 9562 (UUIDs)** — Section 6.5's guidance to mint a dedicated namespace UUID for new applications, rather than reusing a predefined namespace for an unrelated purpose, is what motivated -06's move from the reused DNS namespace to KIA's own dedicated XPID namespace.
+
+**GAR-07 (draft-sato-soos-gar)** established the OTel semantic convention and Session Block architecture. KIA's XPID is recorded as `soos.governance.xpid` in every GAR governance span, enabling cross-session and cross-instance audit correlation using the existing GAR infrastructure.
 
 ---
 
 ## Security
 
-**Key security properties:** GEC keypair is hardware-rooted and transport-independent. FROST threshold signing distributes key material across t-of-n secure elements. XPID is derivation-based and non-forgeable without key material. INV-9 signs every Event Log entry. Attestation relay attacks of the CVE-2026-33697 class are structurally prevented.
+**Key security properties:** GEC keypair is hardware-rooted and transport-independent. FROST threshold signing distributes key material across t-of-n secure elements. XPID is derivation-based and non-forgeable without key material. INV-9 signs every Event Log entry. Attestation relay attacks of the CVE-2026-33697 class are structurally prevented — and the GEC Manifest schema this depends on is now verified complete after the -06 restoration.
 
-**FROST nonce reuse (§15.8):** Critical security failure in FROST — nonce reuse exposes secret shares. Defense: per-operation nonce generation (CONF-KIA-16, CONF-KIA-17), nonce state must never be checkpointed or persisted. Hardware RNG health monitoring recommended.
+**FROST nonce reuse (§15.8):** Critical security failure in FROST — nonce reuse exposes secret shares. Defense: per-operation nonce generation (CONF-KIA-16, CONF-KIA-17), nonce state must never be checkpointed or persisted.
 
-**XPID revocation gap (§15.9):** Known open issue OQ-S-XPID-REV. Mitigation: always check jti against Revocation Registry independently of XPID. CAEP propagation subscription for near-real-time revocation signals. GEC Manifest staleness limits bound the exploitation window.
+**Denial of Service via quorum isolation (§15.13, new):** the same refuse-to-sign design that protects integrity creates an availability asymmetry — compromising confidentiality/integrity needs t compromised participants, denying availability needs only n − t + 1 isolated ones, and that gap widens as t approaches n for stronger security margins. Not a flaw in the refuse-rather-than-degrade design — silently degrading would trade a detectable availability failure for an undetectable integrity one — but operators MUST account for it in signing cluster topology, participant placement, and monitoring.
 
-**Formal analysis status:** No formal verification of the FROST integration or XPID derivation security properties has been conducted. Formal analysis with RATS WG academic partners is planned post-Vienna.
+**XPID revocation gap (§15.9/§6.4):** Known open issue OQ-S-XPID-REV. Mitigation: always check jti against the Revocation Registry independently of XPID (CONF-KIA-23).
+
+**Evidence visibility to unintended verifiers (§15.12/§6.6, disclosed in -05):** the Cross-Instance Trust Model has no stated mitigation for a federation participant obtaining structural visibility into Evidence it isn't authorized to appraise. Tracked as OQ-KIA-EVIDENCE-VIS; no mitigation specified yet.
+
+**XPID linkability (§16, new):** the XPID's deliberate persistence and cross-context recomputability is exactly the shape of identifier GDPR Art. 4(1) and APPI linkability analysis address. Anyone who can observe `soos.governance.xpid` across two or more GAR spans — including, per the Evidence-visibility gap above, an unintended verifier — can correlate that agent's activity for the lifetime of the Party Registry entry. No rotation mechanism is specified yet; resolution deferred alongside the other two open issues.
+
+**Formal analysis status:** No formal verification of the FROST integration or XPID derivation security properties has been conducted. Formal analysis with RATS WG academic partners remains planned.
 
 ---
 
