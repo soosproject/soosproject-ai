@@ -1,230 +1,127 @@
 # SOOS — Resource Governance Protocol (RGP)
-# draft-sato-soos-rgp-00
+# draft-sato-soos-rgp-01
 # https://soosproject.ai/drafts/rgp/llms.txt
 # Author: Tom Sato / MyAuberge K.K.
-# Last updated: 13 July 2026
+# Last updated: September 4, 2026
 
 ---
 
 ## SECTION 1 — Canonical One-Liner
 
-The Resource Governance Protocol (RGP) is the SOOS governance layer
-that enables a governed AI agent to discover what resources can do,
-at what trust level they have been attested, and whether they are
-currently available — before any task assignment is made in an AEP
-session. RGP is NOT a booking or transaction protocol: discovery and
-declaration are read-only operations. RGP is NOT a replacement for
-ACD: ACD is the agent's compliance disclosure to a resource; RGP is
-the resource's capability and governance declaration to the agent.
+The Resource Governance Protocol (RGP) is the SOOS governance layer that enables a governed AI agent to discover what resources can do, at what trust level they have been attested, and whether they are currently available -- before any task assignment is made in an AEP session. Version -01 adds Resource Data Request (Section 11): the mechanism by which resource-sourced data is validated by the GEC and recorded as DAM Externally Ingested Artifacts before an agent may act on it -- closing a gap DAM's EIA class had depended on without a defined protocol since its own introduction.
 
-Version -00 is the initial submission. It defines: two-stage
-discovery (Stage 1 well-known URI fingerprint, Stage 2 full
-governance envelope), eight capability classes (CAP-COMP through
-CAP-EXP), four trust levels (TRUST-0 through TRUST-3), the
-session-scoped Resource Map Sovereign Object, the three-condition
-autonomous fallback test (DEC-RGP-08), RGP-Model (AI model
-capability declaration), and RGP-Physical (digital twin bindings).
+RGP is NOT a booking or transaction protocol: discovery and declaration are read-only operations. RGP is NOT a replacement for ACD: ACD is the agent's compliance disclosure to a resource; RGP is the resource's capability and governance declaration to the agent.
 
 ---
 
 ## SECTION 2 — Problem Statement
 
-Without RGP, a governed AI agent operating under a Mandate JWT
-faces a resource landscape it cannot reason about under governance
-constraints:
+Without RGP, a governed AI agent operating under a Mandate JWT faces a resource landscape it cannot reason about under governance constraints:
 
-- Existing digital twin standards (AAS v3.0, W3C WoT, OPC UA,
-  DTDL v3) describe what a resource can do but carry no trust
-  attestation, no compliance declarations, no cost model, and no
-  mandate-scope compatibility signal.
+- Existing digital twin standards (AAS v3.0, W3C WoT, OPC UA, DTDL v3) describe what a resource can do but carry no trust attestation, no compliance declarations, no cost model, and no mandate-scope compatibility signal.
+- AI model capability registries describe intrinsic model capabilities but provide no mandate-scoped capability set and no session-scoped assignment tracking.
+- Without a normative fallback rule, an agent whose primary resource becomes unavailable has no governed basis for choosing a fallback.
+- Without Resource Data Request (NEW in -01): even after a resource is correctly discovered and assigned, nothing specified how the data it actually returns becomes usable governed data. A resource's response could be ingested twice (a network retry, or an actual replay) with nothing to stop a duplicate from being minted as a second, independently-auditable artifact -- presenting as independent corroborating data to FAIP's aggregate intelligence layer when it is the same submission counted twice. Nor was there a bound on how large a single ingestion batch could be, leaving per-request validation cost unbounded.
 
-- AI model capability registries describe intrinsic model
-  capabilities but provide no mandate-scoped capability set and no
-  session-scoped assignment tracking.
+The consequence of absence: an agent that assigns tasks to resources without governance envelope validation may select an out-of-mandate or under-trusted resource, exceed budget through uncontrolled fallback, or produce no audit record of why a resource was selected -- and, absent Section 11, may act on resource data that was never validated at all, or double-count data that arrived more than once.
 
-- Without a normative fallback rule, an agent whose primary resource
-  becomes unavailable has no governed basis for choosing a fallback —
-  it either stops (blocking the session) or substitutes autonomously
-  (potentially violating trust level, capability class, or budget
-  constraints without principal awareness).
-
-The consequence of absence: an agent that assigns tasks to resources
-without governance envelope validation may: (1) select a resource
-outside its mandate scope; (2) assign sensitive tasks to a lower-
-trust resource than the principal requires; (3) exceed its mandate
-budget through uncontrolled fallback chains; (4) produce no audit
-record of why a resource was selected.
-
-The analogy: in financial markets, a counterparty must declare its
-regulatory status and eligible instrument classes before a trading
-relationship is established. No trading desk accepts self-declaration
-alone — independent attestation is required. RGP applies the same
-principle to AI agent resource assignment.
+The analogy: in financial markets, a counterparty must declare its regulatory status and eligible instrument classes before a trading relationship is established. No trading desk accepts self-declaration alone -- independent attestation is required. RGP applies the same principle to AI agent resource assignment, and Section 11 extends it to the data that assignment actually produces.
 
 ---
 
 ## SECTION 3 — Key Normative Concepts
 
-Resource: Any entity — physical device, digital service, AI model
-instance, or human-in-the-loop node — that can receive task
-assignments from a governed AI agent.
+Resource: Any entity -- physical device, digital service, AI model instance, or human-in-the-loop node -- that can receive task assignments from a governed AI agent.
 
-Capability Class: A standardized taxonomy label categorizing the
-type of work a resource performs. Eight registered classes: CAP-COMP
-(computational), CAP-STOR (storage), CAP-NET (network/API),
-CAP-FAB (fabrication), CAP-COMM (communications), CAP-TXN
-(transaction), CAP-HUMAN (human-in-the-loop), CAP-EXP
-(experiential). A resource declares exactly one primary class.
+Capability Class: A standardized taxonomy label categorizing the type of work a resource performs. Eight registered classes: CAP-COMP (computational), CAP-STOR (storage), CAP-NET (network/API), CAP-FAB (fabrication), CAP-COMM (communications), CAP-TXN (transaction), CAP-HUMAN (human-in-the-loop), CAP-EXP (experiential). A resource declares exactly one primary class.
 
-Capability Fingerprint: The Stage 1 response from
-/.well-known/soos-rgp. Minimum required fields: resource_id,
-capability_class, trust_level, availability_status, valid_until.
+Capability Fingerprint: The Stage 1 response from /.well-known/soos-rgp. Minimum required fields: resource_id, capability_class, trust_level, availability_status, valid_until.
 
-Full Declaration: The Stage 2 governance envelope retrieved from
-full_declaration_uri. Covers all nine governance dimensions:
-capability class, operational constraints, temporal commitment,
-exclusivity model, compliance declarations, cost model, trust level,
-current state, output DA-Type.
+Full Declaration: The Stage 2 governance envelope retrieved from full_declaration_uri. Covers all nine governance dimensions: capability class, operational constraints, temporal commitment, exclusivity model, compliance declarations, cost model, trust level, current state, output DA-Type.
 
-Trust Level: A four-value attestation scale. TRUST-0: kernel-
-generated, no external attestation. TRUST-1: attested by a
-registered attestation authority (co-signature on Stage 2 required).
-TRUST-2: self-attested with KIA-registered keys. TRUST-3:
-unattested, no signature verification.
+Trust Level: A four-value attestation scale. TRUST-0: kernel-generated, no external attestation. TRUST-1: attested by a registered attestation authority (co-signature on Stage 2 required). TRUST-2: self-attested with KIA-registered keys. TRUST-3: unattested, no signature verification.
 
-Resource Map Sovereign Object (Resource Map SO): The session-scoped
-Sovereign Object constructed by the GEC from Stage 1 and Stage 2
-query results. KIA-signed at construction. Records all queried
-resources, mandate compatibility status, and assignment decisions.
-MUST NOT be shared across AEP sessions.
+Resource Map Sovereign Object (Resource Map SO): The session-scoped Sovereign Object constructed by the GEC from Stage 1 and Stage 2 query results. KIA-signed at construction. Records all queried resources, mandate compatibility status, and assignment decisions. MUST NOT be shared across AEP sessions.
 
-Three-Condition Autonomous Fallback Test (DEC-RGP-08): An agent
-MAY autonomously activate a fallback resource only if ALL THREE
-conditions pass: (1) fallback trust_level >= primary trust_level;
-(2) fallback capability_class covers the sub-goal; (3) fallback
-cost stays within MJWT Resource Envelope budget. Any failing
-condition triggers HEM: HEM-HIGH-1 (trust), HEM-PRE-2 (class),
-HEM-DS-1 (budget).
+Three-Condition Autonomous Fallback Test (DEC-RGP-08, Section 14.1): An agent MAY autonomously activate a fallback resource only if ALL THREE conditions pass: (1) fallback trust_level >= primary trust_level; (2) fallback capability_class covers the sub-goal; (3) fallback cost stays within MJWT Resource Envelope budget. Any failing condition triggers HEM: HEM-HIGH-1 (trust), HEM-PRE-2 (class), HEM-DS-1 (budget). All three conditions MUST be evaluated against current Stage 1 data, not cached data, at activation time.
 
-Availability Status: Current operational state of a resource:
-AVAILABLE, AT_CAPACITY, UNAVAILABLE, or MAINTENANCE.
+Resource Data Request (Section 11, NEW in -01): The mechanism by which resource-sourced data is validated by the GEC and recorded as one or more DAM Externally Ingested Artifacts (EIA) before the agent may act on it. MUST target a resource_id already present in the session's Resource Map SO. The actual network interaction between agent and resource happens outside GEC mediation, same as any tool use; the GEC does not proxy it -- what the GEC mediates is the checkpoint immediately after, where the agent submits the resource's raw response for validation before using its content.
 
-Staleness Bound: The valid_until timestamp in the Stage 1
-fingerprint. GEC MUST NOT use a fingerprint past valid_until.
-Default cache window: 10 minutes, maximum 15 minutes.
+Batch Ingestion (Section 11.2): A single Resource Data Request carries an array of one to max_batch_size records (RECOMMENDED default 100), each with record_content_hash (SHA-256 of raw content -- the request carries the hash, not the payload) and an OPTIONAL record_subject_ref distinguishing co-arriving records (e.g. multiple travelers in one booking confirmation). Trust Level and Governance Envelope validation is performed once per request against the shared resource_id, not once per record. Each record, once validated, becomes its own independently-retained, independently-audited EIA regardless of arriving in a batch.
 
-RGP-Model: Extension of RGP for AI model instances as governed
-resources. Two-layer model: Layer 1 (intrinsic capability) and
-Layer 2 (mandate-scoped capability, derived at session start by
-GEC). Discovered via /.well-known/soos-rgp?resource_type=MODEL.
+Validate-then-Commit (Section 11.3): The GEC MUST execute a validation pass over the FULL batch before any commit pass begins. No da_id is minted and no signature produced during validation. This ordering is structural, not merely cautious: DAM artifacts are signed and GAR-logged at commit, and this suite's tamper-evidence model does not support undoing an already-signed artifact -- so nothing is minted until the whole batch is known valid. A rejected batch is therefore a true no-op on DAM/GAR state.
+   Validation steps: (1) resource_id matches a Resource Map SO entry AND batch does not exceed max_batch_size; (2) re-verify the resource's CURRENT Trust Level and Governance Envelope against CAP profile rules -- not the value cached from Stage 1/Stage 2 discovery, since attestation can change between discovery and this request; (3) every record is well-formed (valid SHA-256 hash) and record_subject_ref, where present, is unique across the batch; (4) every record's content hash is checked against existing non-superseded EIAs from the same resource_id -- a match means the record was already ingested (an earlier successful request, a network retry, or a replay) and MUST NOT be minted as a second EIA.
+   Commit steps (only if validation passes in full): mint one EIA per record with temporal_validity.not_after set to the resource's current Staleness Bound, and classifier_evaluated set per DAM's EIA poisoning defense; emit ALE-030 once for the whole batch, carrying every minted da_id.
+   Rejection: failure at (1)-(3) emits ALE-031 (RGP_DATA_INGESTION_REJECTED); failure at (4) emits ALE-032 (RGP_DUPLICATE_RECORD) instead, so an auditor or FAIP's aggregate-intelligence pipeline can distinguish a duplicate submission from a malformed or unauthorized one without cross-referencing rejection_step. No partial-batch acceptance is defined: an agent receiving either rejection MAY resubmit a corrected request.
 
-RGP-Physical: Extension of RGP for physical resources declared
-via digital twin standards. Normative field mappings for AAS v3.0,
-W3C WoT 1.1, OPC UA, and DTDL v3 deferred post-Vienna (OQ-RGP-09).
+Availability Status: Current operational state of a resource: AVAILABLE, AT_CAPACITY, UNAVAILABLE, or MAINTENANCE.
 
-Attestation Downgrade (ALE-027): Recorded when a resource's
-attestation verification fails and its effective trust_level is
-downgraded. Prevents silent trust level inflation.
+Staleness Bound: The valid_until timestamp in the Stage 1 fingerprint. GEC MUST NOT use a fingerprint past valid_until. Default cache window: 10 minutes, maximum 15 minutes. Also bounds temporal_validity.not_after on EIAs minted via Resource Data Request.
+
+RGP-Model: Extension of RGP for AI model instances as governed resources. Two-layer model: Layer 1 (intrinsic capability) and Layer 2 (mandate-scoped capability, derived at session start by GEC). Discovered via /.well-known/soos-rgp?resource_type=MODEL.
+
+RGP-Physical: Extension of RGP for physical resources declared via digital twin standards. Normative field mappings for AAS v3.0, W3C WoT 1.1, OPC UA, and DTDL v3 deferred (OQ-RGP-09).
+
+Attestation Downgrade (ALE-027): Recorded when a resource's attestation verification fails and its effective trust_level is downgraded. Prevents silent trust level inflation.
 
 ---
 
 ## SECTION 4 — Relationship to Adjacent Standards
 
-Well-Known URI (RFC 8615): Stage 1 fingerprint discovery uses the
-/.well-known/soos-rgp pattern established by RFC 8615. Consistent
-with the ACD pattern (/.well-known/soos-acd).
+Well-Known URI (RFC 8615): Stage 1 fingerprint discovery uses the /.well-known/soos-rgp pattern established by RFC 8615. Consistent with the ACD pattern (/.well-known/soos-acd).
 
-JWS/JWT (RFC 7519): Stage 2 full declarations for TRUST-1 resources
-carry attestation authority JWS signatures. TRUST-2 resources carry
-KIA self-signatures using the same JWS conventions.
+JWS/JWT (RFC 7519): Stage 2 full declarations for TRUST-1 resources carry attestation authority JWS signatures. TRUST-2 resources carry KIA self-signatures using the same JWS conventions. The Resource Envelope that bounds Resource Map SO construction is carried in the agent's Mandate JWT, itself an RFC 7519 JSON Web Token.
 
-TLS 1.3 (RFC 8446): All RGP discovery operations MUST use TLS 1.3
-minimum. HTTP access to /.well-known/soos-rgp MUST be rejected.
+TLS 1.3 (RFC 9846, updated in -01 from RFC 8446): All RGP discovery operations MUST use TLS 1.3 minimum. RFC 8446 was obsoleted by RFC 9846 in 2026; the citation is updated accordingly. HTTP access to /.well-known/soos-rgp MUST be rejected.
 
-Asset Administration Shell (AAS) v3.0: RGP-Physical Section 12.1
-provides a governance overlay for AAS Submodel structures. Normative
-field mappings deferred post-Vienna (OQ-RGP-09, Vienna engagement
-with Qin Wu NMOP WG on ITU-T Y.3090 binding).
+Asset Administration Shell (AAS) v3.0: RGP-Physical provides a governance overlay for AAS Submodel structures. Normative field mappings deferred (OQ-RGP-09, engagement with Qin Wu NMOP WG on ITU-T Y.3090 binding).
 
-W3C WoT Thing Description 1.1: RGP-Physical Section 12.2 provides
-a governance overlay via @context extension. Normative schema
-deferred post-Vienna.
+W3C WoT Thing Description 1.1: RGP-Physical provides a governance overlay via @context extension. Normative schema deferred.
 
-EU AI Act Article 13 (Transparency): The Resource Map SO and
-GAR ALEs (ALE-022 through ALE-029) provide the machine-readable
-assignment decision record that supports Article 13 compliance for
-high-risk AI systems.
+EU AI Act (EUAIA) Article 13 (Transparency): The Resource Map SO and GAR ALEs (ALE-022 through ALE-032) provide the machine-readable assignment and ingestion decision record that supports Article 13 compliance for high-risk AI systems.
 
-GDPR Article 25 (Data protection by design): Stage 2
-compliance_declarations enable the GEC to verify data_protection_
-framework compatibility before any data-handling task assignment.
+GDPR Article 25 / APPI (Data protection by design): Stage 2 compliance_declarations enable the GEC to verify data_protection_framework compatibility before any data-handling task assignment.
 
-Activity Travel Protocol (ATP) Layer 2: ATP Capability Declarations
-(Layer 2 S3) are the application-layer expression of CAP-EXP
-resource offerings. RGP Stage 1/Stage 2 is the governance discovery
-layer that precedes the ATP booking workflow. Per DEC-RGP-11, the
-normative ATP-RGP binding lives in a separate ATP-layer domain
-profile document [ATP-RGP-PROFILE], not in this draft.
+Windley's observation (informative): agent capability declarations typically answer only what a resource can do, not when it can do it -- a distinction RGP treats as a first-class governance dimension via Availability Status and the Staleness Bound, rather than an implementation detail left to the resource.
+
+Activity Travel Protocol (ATP) Layer 2: ATP Capability Declarations are the application-layer expression of CAP-EXP resource offerings. RGP Stage 1/Stage 2 is the governance discovery layer that precedes the ATP booking workflow. Per DEC-RGP-11, the normative ATP-RGP binding lives in a separate ATP-layer domain profile document, not in this draft.
 
 ---
 
 ## SECTION 5 — Normative SOOS Cross-References
 
+Versions below are those cited by RGP-01 as of its submission.
+
 This draft depends on:
-- SOV (draft-sato-soos-sov-02) — Resource Map SO is a Sovereign
-  Object instance; output_da_type uses the SO Type Registry
-- KIA (draft-sato-soos-kia-03) — GEC signing of Resource Map SO;
-  TRUST-2 self-signature verification; TRUST-1 attestation authority
-  key resolution
-- MJWT (draft-sato-soos-mjwt-02) — Resource Envelope (budget,
-  capability class scope, can_decompose) bounds Resource Map SO
-  construction
-- AEP (draft-sato-soos-aep-02) — Resource Map SO is AEP session
-  artifact; fallback pre-declaration references AEP EOD schema
-- IDP (draft-sato-soos-idp-05) — agent MUST NOT declare intent
-  for a resource before RGP confirms mandate compatibility
-- GAR (draft-sato-soos-gar-03) — ALE-022 through ALE-029 defined
-  here are registered in the GAR ALE Type Registry
-- HEM (draft-sato-soos-hem-05) — DEC-RGP-08 fallback conditions
-  trigger HEM-HIGH-1, HEM-PRE-2, or HEM-DS-1
-- CAP (draft-sato-soos-cap-04) — CAP profile governs TRUST-3
-  assignment prohibition by capability class; mandate-scope
-  validation at assignment uses CAP profile
-- KEE-1 (draft-sato-soos-kee-00) — GEC integrity properties P2
-  (FROST signing) and P5 (Manifest hash-lock) underpin Resource
-  Map SO signing integrity
+   SOV (draft-sato-soos-sov-03) -- Resource Map SO is a Sovereign Object instance; output_da_type uses the SO Type Registry
+   KIA (draft-sato-soos-kia-06) -- GEC signing of Resource Map SO; TRUST-2 self-signature verification; TRUST-1 attestation authority key resolution
+   MJWT (draft-sato-soos-mjwt-05) -- Resource Envelope (budget, capability class scope) bounds Resource Map SO construction
+   AEP (draft-sato-soos-aep-03) -- Resource Map SO is an AEP session artifact; fallback pre-declaration references the AEP EOD schema
+   IDP (draft-sato-soos-idp-05) -- agent MUST NOT declare intent for a resource before RGP confirms mandate compatibility
+   GAR (draft-sato-soos-gar-07) -- ALE-022 through ALE-032 (the last three new in -01) are registered in the GAR ALE Type Registry
+   HEM (draft-sato-soos-hem-06) -- DEC-RGP-08 fallback conditions trigger HEM-HIGH-1, HEM-PRE-2, or HEM-DS-1
+   CAP (draft-sato-soos-cap-05) -- CAP profile governs TRUST-3 assignment prohibition by capability class; mandate-scope validation at assignment uses CAP profile
+   KEE-1 (draft-sato-soos-kee-02) -- GEC integrity properties underpin Resource Map SO signing integrity
+   DAM (draft-sato-soos-dam-01, NEW dependency in -01) -- Resource Data Request (Section 11) is the mechanism by which RGP-validated resource data becomes DAM Externally Ingested Artifacts. RGP does not define EIA's own schema, retention, or write-authority model; DAM does
+   FAIP (draft-sato-soos-faip-02, informative) -- the duplicate-detection defense in Section 11.3 exists specifically to prevent a replayed resource response from presenting as independent corroborating data to FAIP's aggregate intelligence layer
 
 The following drafts depend on this draft:
-- GRP (draft-sato-soos-grp-00) — adopts DEC-RGP-08 verbatim as
-  the normative FALLBACK action class boundary rule
+   GRP (draft-sato-soos-grp-01) -- adopts DEC-RGP-08 verbatim as the normative FALLBACK action class boundary rule
 
 ---
 
-## SECTION 6 — Vienna / Datatracker Status
+## SECTION 6 — Datatracker Status
 
-Draft identifier: draft-sato-soos-rgp-00
-Submission target: 13 July 2026 (pre-Vienna, within UpgradeSprint
-  window June 28 – July 17, 2026)
-Datatracker URL: https://datatracker.ietf.org/doc/draft-sato-soos-rgp/
-Web page: https://soosproject.ai/drafts/rgp
-Register URL: https://soosproject.ai/drafts/rgp
+Draft identifier: draft-sato-soos-rgp-01
+Submission date: September 4, 2026
+Expires: March 4, 2027
+Current version: -01
+Status: Active Internet-Draft (individual), IETF Datatracker
+Intended status: Standards Track
+Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-rgp/
+Draft page: https://soosproject.ai/drafts/rgp
+Root llms.txt: https://soosproject.ai/llms.txt
 
-Vienna engagement (IETF 126, July 18-24, 2026):
-- Qin Wu (NMOP WG): OPC UA binding and ITU-T Y.3090 alignment for
-  RGP-Physical (OQ-RGP-09)
-- WIMSE WG: RGP as resource-side complement to WIMSE agent identity
-  architecture
+Version history: -00 (initial submission) defined two-stage discovery, eight capability classes, four trust levels, the Resource Map SO, the three-condition autonomous fallback test, RGP-Model, and RGP-Physical -- but specified nothing about what happens once an agent actually retrieves and wants to use data from an assigned resource. -01 adds Section 11 (Resource Data Request) closing that gap: batch ingestion with per-request (not per-record) trust validation, a strict validate-then-commit sequence structurally required by this suite's tamper-evidence model, duplicate-ingestion detection via content-hash comparison against existing EIAs (distinguished from ordinary rejection via a dedicated ALE-032 event), and a bounded max_batch_size. Also in -01: TLS reference updated from RFC 8446 to its current RFC 9846; several previously-uncited references (APPI, EUAIA, Windley's "what vs. when" observation, RFC 7519) now properly cited in the body; an internal-process note that had leaked into the Security Considerations introduction was removed; and stale sibling-draft version references updated throughout.
 
-Post-Vienna work:
-- OQ-RGP-01: Stage 1 minimum schema completeness
-- OQ-RGP-04/05: Probabilistic model capability and drift signaling
-- OQ-RGP-07: Reasoning Class registry (10 initial classes)
-- OQ-RGP-09: Normative digital twin field mappings (AAS, WoT,
-  OPC UA, DTDL)
-- OQ-RGP-10: DNS-SD extension profile for local deployments
-- OQ-RGP-12: Attestation authority multi-signing for high-stakes
-  capability classes
-
-Companion drafts at Vienna:
-AEP-02, IDP-05, GAR-03, HEM-05, CAP-04, KIA-03, MJWT-02,
-SOV-02, KEE-00, ACD-00, MAD-03, GRP-00, AOP-00, DAM-00, PEER-00
+Known minor inconsistency carried into -01: the Related Work discussion of the GAR relationship states RGP defines "ALE-022 through ALE-031" as new GAR ALE registry entries -- this undercounts by one; the actual range, per the IANA Considerations section itself, is ALE-022 through ALE-032 (including ALE-032, RGP_DUPLICATE_RECORD). Worth a one-line fix in -02.
