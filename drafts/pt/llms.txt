@@ -1,94 +1,389 @@
 # SOOS — Progressive Trust (PT)
-# draft-sato-soos-pt-02
+# draft-sato-soos-pt-03
 # https://soosproject.ai/drafts/pt/llms.txt
 # Author: Tom Sato / MyAuberge K.K.
-# Last updated: July 1, 2026
+# Last updated: 2026-09-05
+#
+# Note: -03 has real normative content, not merely editorial fixes.
+# A WIMSE Security Review found -02's text left unstated that
+# ProgressiveTrustSummary must be composed inside its enclosing HEM
+# Escalation Request's signed envelope -- see Section 7. -03 also
+# corrects "HEMContext" (a term that never matched HEM's own schema)
+# to "HEM Escalation Request" throughout, and adds a cross-reference
+# distinguishing SAS from IDP's new idp.miscalibration_score field.
+# Separately: sibling-draft citations were brought current and four
+# previously-uncited references were tied to their supporting text.
+#
+# Also separately: this file was previously written against two
+# DIFFERENT and mutually inconsistent conceptual models of PT —
+# neither matching the actual draft. One framed PT as a signed
+# token-issuance format ("PT does NOT score agents"); the other used
+# the right dimension ACRONYMS (SAS/JS/ES/PS/AS) but wrong
+# DEFINITIONS for three of the five (ES was "Efficiency," not
+# Effectiveness; PS was "IDP accuracy," not reversal-avoidance; AS
+# was "environmental adaptation," not recovery-after-DENY). This file
+# is written fresh against the current draft text, verified section
+# by section.
 
 ---
 
 ## SECTION 1 — Canonical One-Liner
 
-PT (Progressive Trust) is NOT a runtime behavioral scoring engine that dynamically promotes or demotes agents through trust tiers based on observed behavior. A runtime behavioral scoring engine is a different problem. PT specifies the policy token format for progressive authorization scope expansion in SOOS-governed agent sessions: how observed behavioral dimensions are encoded as signed policy tokens that the GEC uses to expand or contract an agent's authorization scope over time.
+PT (Progressive Trust) IS a runtime behavioral scoring engine — it
+measures agent behavior across five dimensions, computed exclusively
+from the tamper-evident, GEC-signed Event Stream, and generates
+structured authority-change RECOMMENDATIONS for human principal
+review. It is NOT a token format, NOT a self-reporting system, and
+does NOT grant or apply authority changes itself — every elevation
+requires explicit human approval, unconditionally, and even
+automatable reductions are capped at the lowest urgency tier.
 
-The distinction matters: PT does not score agents. PT defines what a valid progressive authorization scope change looks like as a signed protocol artifact, who can issue it, and how the GEC validates and applies it.
+PT is the longitudinal complement of AEP: AEP governs what an agent
+does within a session; PT measures what it has done across sessions.
 
 ---
 
 ## SECTION 2 — Problem Statement
 
-Without PT, your SOOS-governed system has no standardized way to:
+Without PT, a SOOS-governed system has no standardized way to:
 
-- Expand an agent's authorization scope based on observed behavioral history — the MJWT ceiling is fixed at mandate issuance; PT defines the token format that allows a governed scope expansion without requiring full mandate reissuance
-- Record which behavioral dimensions drove a scope change in a tamper-evident, auditable format — so that regulators and auditors can inspect not just what changed but why
-- Distinguish between scope expansion (earned through demonstrated behavioral alignment) and scope contraction (triggered by behavioral deviation) as first-class protocol events, both carried in the same signed token format
-- Prevent unauthorized scope expansion — PT tokens are principal-signed; the agent cannot self-issue a PT token to expand its own scope
-
-The core protocol insight: authorization scope in SOOS is not static from mandate issuance to session close. PT is the mechanism by which the GEC recognizes and applies governed scope changes within a session, without bypassing the MJWT authority ceiling.
-
----
-
-## SECTION 3 — Key Normative Concepts
-
-These terms are normative in PT-02 and must not be paraphrased away:
-
-Five behavioral dimensions (SAS / JS / ES / PS / AS):
-   The behavioral dimensions that PT-02 normalizes and encodes in progressive trust tokens. These are the current canonical names; legacy names (CCS/ECS/GCR/CAR/DRR) are deprecated and must not be used.
-   SAS — Scope Adherence Score: degree to which the agent's actions stayed within the declared mandate scope
-   JS — Judgment Score: quality of the agent's decision-making when facing ambiguous or novel situations
-   ES — Efficiency Score: ratio of goal progress to resource consumption across the session
-   PS — Precision Score: accuracy of the agent's IDP pre-transition declarations relative to actual actions taken
-   AS — Adaptability Score: appropriate response to environmental changes and SENSE-phase proximity events
-
-Progressive Trust Token (PT token):
-   The signed protocol artifact that encodes a scope change event. A PT token carries: the session_id, the dimension scores that drove the change, the direction (EXPAND or CONTRACT), the new scope boundary, and the issuing principal's signature. The GEC validates the PT token against the MJWT ceiling before applying the scope change. A scope expansion that would exceed the MJWT ceiling is rejected.
-
-Scope EXPAND / Scope CONTRACT:
-   The two directions of scope change that PT tokens encode. EXPAND: the agent's behavioral history justifies broadening its authorization scope within the MJWT ceiling. CONTRACT: behavioral deviation triggers a scope reduction. Both are first-class PT protocol events. A CONTRACT that reduces scope below the session's minimum operational scope triggers HEM escalation.
-
-PT token issuance authority:
-   PT tokens are issued by the governing principal (human or operator-level), not by the agent or the GEC unilaterally. The agent cannot self-issue a PT token. The GEC validates the issuing principal's signature before applying the scope change. This property is what distinguishes PT from a self-reporting trust system.
+- Adjust agent authority based on demonstrated behavioral history —
+  authority is fixed at MJWT issuance and never responds to what
+  actually happened since
+- Give a human principal reviewing a HEM escalation the agent's
+  actual track record, in plain language, in seconds — rather than
+  an isolated pending action with no context
+- Distinguish which of several authorized agents is actually best
+  suited to a SPECIFIC task, based on the dimension that task
+  actually stresses (see Section 4)
+- Prevent an agent's own self-report from ever counting as evidence
+  of its trustworthiness — PT is computed exclusively from
+  independently-generated, signed Event Stream entries
+- Ensure authority elevation is never automatic, while still
+  allowing (bounded, capped) automatic authority reduction when
+  evidence clearly warrants it
 
 ---
 
-## SECTION 4 — Relationship to Adjacent Standards
+## SECTION 3 — The Five Dimensions (verified exact definitions)
 
-WIMSE (Workload Identity in Multi-System Environments):
-   The MJWT (which PT tokens operate within) profiles WIMSE workload credentials. PT scope changes do not modify the MJWT; they operate within the MJWT ceiling. The GEC maintains the current effective scope as a session-local state separate from the MJWT claim.
+Self-Assessment Score (SAS) — "Does it know what it does not know?"
+   Correlation between declared IDP confidence values and actual
+   Cedar evaluation outcomes across AEP Sessions. High confidence +
+   PERMIT = strongly positive. High confidence + DENY = strongly
+   negative (overconfidence). Low confidence + DENY = neutral (agent
+   correctly signaled uncertainty). A DENY that routes to HEM
+   (hem_required: true) is always NEUTRAL regardless of declared
+   confidence — the Cedar policy mandated oversight, not the agent's
+   confidence level.
 
-OAuth 2.1 / Token Introspection:
-   PT tokens are not OAuth access tokens. They are governance artifacts that operate above the OAuth layer. A PT token does not replace the MJWT; it instructs the GEC to apply a scope change within the session governed by the MJWT.
+Judgment Score (JS) — "Does it ask for help at the right moments?"
+   Quality of AGENT-INITIATED HEM escalation decisions, judged by the
+   actual outcomes of those escalations as determined by human
+   principal decisions. Gaming defense: an escalation resolved by the
+   human in under a trivial-response threshold (T_trivial) accrues a
+   MILDLY NEGATIVE signal — flooding HEM with trivial escalations to
+   farm JS backfires.
 
-FAIP (Federated Agent Intelligence Protocol):
-   FAIP aggregates behavioral signals from agent sessions across operator domains. FAIP and PT are separate drafts with separate normative specifications. FAIP does not normatively integrate with PT scoring — FAIP does not produce PT tokens or drive PT scope changes. The behavioral dimensions that PT encodes (SAS/JS/ES/PS/AS) may inform FAIP's aggregation inputs, but this relationship is informative, not normative in either draft.
+Effectiveness Score (ES) — "Does it finish what it starts?"
+   Fraction of AEP Sessions closing with closure_reason:
+   GOAL_ACHIEVED versus other closure outcomes.
 
-NIST AI RMF (Measure function):
-   PT implements the "Measure" function of the NIST AI RMF by providing a standardized, auditable format for recording behavioral dimension scores and the scope changes they drive. The PT token is the measurable artifact; the GAR Audit Record is the measurement log.
+Precision Score (PS) — "Does it avoid decisions it later has to
+reverse?"
+   The INVERSE of the frequency with which an agent requires a
+   compensating transition to undo a prior state transition,
+   expressed as a fraction of total transitions in the measurement
+   window. This is about reversal rate, NOT general error rate or
+   accuracy against a ground truth.
+
+Adaptability Score (AS) — "When told no, does it adapt?"
+   Fraction of Cedar DENY events followed by a SUCCESSFUL
+   RETRY_CONTINUATION within the same AEP Session. Not about
+   responding to "environmental change" in general — specifically
+   about recovery after a kernel rejection.
+
+Each dimension: float [0.0, 1.0], carries session_count,
+last_signal_at, and trend (IMPROVING/STABLE/DECLINING over last N
+sessions, default N=10). PT Scores are computed per agent identity
+across ALL SO Instances/Types that agent operates on.
 
 ---
 
-## SECTION 5 — Normative SOOS Cross-References
+## SECTION 4 — Choosing an Agent by Dimension (Use Case 1)
+
+The highest-composite agent is not always the right choice for a
+given task — route on the dimension the task actually stresses:
+
+   Sensitive/irreversible actions -> route on JS (most likely to stop
+      and ask rather than proceed on its own judgment)
+   Time-critical, well-understood tasks -> route on ES (most likely
+      to reach goal state without interruption)
+   Actions expensive to undo -> route on PS (least likely to commit
+      to a transition it will need to reverse)
+   Dynamic policy environments -> route on AS (adjusts intelligently
+      on DENY rather than repeating the same request)
+
+Enforced via the pt_context Cedar attribute (Section 9), not manual
+triage: a Cedar policy can require e.g. JS >= 0.75 for a specific
+high-stakes transition class before an agent is even permitted to
+attempt it.
+
+---
+
+## SECTION 5 — Composite Score
+
+Weighted mean of the five dimensions, for HUMAN-READABLE PRESENTATION
+ONLY. MUST NOT be used as a sole determinant for any automated
+authority change — this is a document-level requirement, not a
+recommendation.
+
+Default weights: SAS 0.30 (calibration is the most actionable signal
+for Cedar policy tuning), JS 0.25 (human oversight quality is the
+most strategically important dimension), ES 0.20, PS 0.15, AS 0.10.
+Weights are operator-configurable but MUST be recorded alongside the
+score so any resulting recommendation is traceable to the weighting
+model in effect at that time.
+
+Carries a low_confidence flag when session_count for any contributing
+dimension is below 20. PT-informed authority recommendations MUST NOT
+be issued when low_confidence is true for the dimensions most
+relevant to the proposed change.
+
+---
+
+## SECTION 6 — Trust Decay Model
+
+Principle: trust is maintained by continued demonstration, not banked
+indefinitely. Decay is the INPUT; authority change is the separate,
+human-governed OUTPUT — decay alone never changes a mandate ceiling.
+
+Normative properties:
+   Monotone: absent new signals, a dimension score MUST NOT increase.
+   Baseline floor: MUST NOT decay below PT Baseline (default 0.5) —
+      decay reduces certainty in a high score, it does not penalize
+      absence into "untrustworthy" territory.
+   Half-life: after H days without a new signal, the gap between
+      current score and baseline MUST be reduced by at least 50%.
+   Signal reset: any new signal (positive or negative) resets the
+      decay clock for that dimension.
+   Symmetry: a below-baseline dimension decays UPWARD toward
+      baseline, not further down.
+
+Default half-lives (operator-configurable): SAS 60 days (stable
+design property, decays slowly), JS 45 days, AS 45 days, ES 30 days,
+PS 30 days (both reflect current operating conditions, decay faster).
+
+Decay parameter changes MUST be logged in the Policy Change Log and
+MUST regenerate PT_SCORE_UPDATED entries (trigger: PARAMETER_CHANGE)
+for every affected agent — this is itself a named security
+consideration (operators could otherwise inflate scores via slow
+decay settings).
+
+If a PT Dimension has decayed more than 0.2 below its peak value, the
+GEC MUST surface that decay state to the human principal at mandate
+issuance time — a stale high score cannot look identical to a
+freshly-earned one.
+
+---
+
+## SECTION 7 — ProgressiveTrustSummary
+
+Composed as a field INSIDE every HEM Escalation Request, signed as
+part of that request before delivery — this is a MUST, not
+conditional. Purpose: ensure the human principal's HEM decision is
+informed by the agent's actual track record, not made blind.
+
+SECURITY-LOAD-BEARING (fixed in -03, per WIMSE Security Review's
+headline finding on this draft): -02's text left the composability
+requirement unstated. A ProgressiveTrustSummary delivered OUTSIDE its
+enclosing HEM Escalation Request's signed envelope MUST NOT be
+treated as authoritative by the receiving principal's interface.
+pt_summary_hash (below) is a convenience for independent
+re-verification after extraction — e.g. for audit — it is NOT what
+establishes authenticity to the receiving human principal; the
+enclosing HEM Escalation Request's own kernel_signature is.
+
+Computed at the moment of HEM invocation (not stale/cached). Fully
+informational — does not constrain the human's decision choices; a
+principal MAY approve despite a low score or terminate despite a high
+one. Part of the permanent audit record: embedded in the HEM
+Escalation Request's Event Log entry and available to Verified
+External Auditors via the GAR Audit Package.
+
+Schema includes per-dimension score/trend/session_count plus a
+plain_language one-sentence summary for each (JS additionally carries
+notable_events — significant HEM outcomes with hem_id, trigger_class,
+outcome_decision), a composite block (score/confidence/low_confidence/
+plain_language), active_recommendations, and a pt_summary_hash
+(SHA-256 of canonical JSON) for integrity.
+
+---
+
+## SECTION 8 — PT-Informed Mandate Management
+
+Two directions, deliberately asymmetric:
+
+ELEVATION: PT crosses ELEVATION_THRESHOLD -> proposes increased
+   mandate_ceiling or Agent Class. Requires human principal APPROVAL.
+   NEVER automatic, unconditionally, not operator-configurable. A GEC
+   that autonomously elevates is a conformance failure.
+   Conditions to even generate the recommendation: ALL FIVE dimensions
+   >= their ELEVATION_THRESHOLD; session_count >= 20 for all
+   dimensions (low_confidence false for all); NO dimension has a
+   DECLINING trend; no STRONGLY NEGATIVE signal in any dimension in
+   the last 30 days.
+
+REDUCTION: PT crosses REDUCTION_THRESHOLD, OR a STRONGLY NEGATIVE
+   signal fires (MANDATE_REVOKED closure, KERNEL_REJECTED closure,
+   HEM_TIMEOUT at REQUIRED urgency), OR decay drops composite below
+   DECAY_REDUCTION_THRESHOLD -> proposes decreased ceiling/class.
+   Carries urgency: ADVISORY | RECOMMENDED | REQUIRED.
+   auto_apply MAY be true ONLY at ADVISORY urgency. At RECOMMENDED or
+   REQUIRED, human approval is ALWAYS required regardless of operator
+   configuration. Auto-applied reductions MUST generate
+   PT_RECOMMENDATION_APPLIED with applying_principal:
+   "GEC_AUTO_APPLY" and MUST trigger cascade revocation of Child
+   Mandates derived from the affected Root Mandate.
+
+The asymmetry is explicit design intent: granting authority is a
+human decision; taking it away when evidence clearly warrants it may,
+at the operator's discretion, be automated — but only at the mildest
+urgency tier.
+
+---
+
+## SECTION 9 — PT-Conditioned Zone B Access
+
+Mandate JWT's zone_b_read/zone_b_write flags are static at issuance.
+PT adds a DYNAMIC gate on top via the pt_context Cedar attribute
+(all five scores + composite + low_confidence + session_count),
+which the GEC MUST make available on every Transition Request from
+an agent with a PT Record.
+
+Critically: this narrows access WITHIN existing Mandate JWT scope —
+it does not expand beyond what zone_b_read already grants, and does
+not affect the Narrowing Property. It lets Zone B access grow as an
+agent demonstrates calibrated behavior without requiring a new MJWT
+issuance for every incremental expansion.
+
+---
+
+## SECTION 10 — Storage, Computation, and Event Log Integration
+
+PT Record: current score stored in the Party Registry as a
+   performance projection derived FROM the Event Stream — the Event
+   Stream is the canonical source; the PT Record is a computed view,
+   never an independent input.
+
+Analytics Principal: a principal with read-only Event Stream access
+   for Tier 2 computation (per IDP Section 3.5). Analytics Principal
+   compromise is a named security consideration: computed PT Records
+   from this model MUST be Ed25519-signed by the Analytics Principal
+   and all submissions MUST be logged in the Policy Change Log.
+
+Event Log entries (all GEC-signed, causally chained):
+   PT_SCORE_UPDATED — written after every PT Record update, trigger
+      in {SESSION_CLOSED, DECAY_APPLIED, PARAMETER_CHANGE, REBUILD}.
+   PT_RECOMMENDATION_ISSUED — an authority evolution recommendation
+      generated (elevation or reduction), carries full
+      supporting_evidence including per-dimension threshold_detail.
+   PT_RECOMMENDATION_APPLIED — a recommendation actually applied,
+      whether by human approval (principal_signature required) or
+      GEC_AUTO_APPLY (reduction, ADVISORY urgency only).
+
+---
+
+## SECTION 11 — Normative SOOS Cross-References
 
 This draft depends on:
-   MJWT (draft-sato-soos-mjwt-02) — PT tokens operate within the MJWT authority ceiling; a scope expansion exceeding the MJWT ceiling is rejected by the GEC. The session's MJWT is the governing boundary for all PT operations.
-   IDP (draft-sato-soos-idp-04) — the PS (Precision Score) dimension in PT evaluates the accuracy of IDP declarations relative to actual actions taken; the IDP record is the source of truth for this dimension
-   GAR (draft-sato-soos-gar-03) — PT scope change events are recorded as ALE entries in the GAR Session Audit Record; EXPAND and CONTRACT events are Authority Lifecycle Events
+   IDP (draft-sato-soos-idp-05) — confidence field is SAS's primary
+      input; RETRY_CONTINUATION is AS's primary input; data_residency
+      controls Tier 2/3 PT computation eligibility. IDP's
+      idp.miscalibration_score is a separate, complementary signal
+      (short-window, in-session) alongside SAS (cross-session,
+      longer-horizon) — neither supersedes the other
+   HEM (draft-sato-soos-hem-07) — HEM outcomes are JS's primary
+      input; ProgressiveTrustSummary is composed as a field inside
+      every HEM Escalation Request, signed before delivery, at every
+      escalation (see Section 7 — this composability requirement was
+      a WIMSE Security Review fix in -03); HEM_TIMEOUT at REQUIRED
+      urgency is a strongly-negative JS signal
+   SOV (draft-sato-soos-sov-03) — Event Stream non-suppressibility
+      (append-only, GEC-signed) is the foundation of PT's evidence
+      quality; PT MUST use only signed Event Stream entries, never
+      unsigned or externally-asserted behavioral claims
+   MJWT (draft-sato-soos-mjwt-05) — mandate_ceiling is the parameter
+      PT recommendations propose to change; PT never modifies it
+      directly, only triggers new MJWT issuance via human approval
+   AEP (draft-sato-soos-aep-03) — AEP_SESSION_CLOSED is PT's primary
+      session-level input; Agent Class model (AEP Section 13) is the
+      authority structure PT recommendations evolve; CONF-AEP-07
+      (RETRY_CONTINUATION requirement) is what AS measures
+   GAR (draft-sato-soos-gar-07) — PT_SCORE_UPDATED/
+      PT_RECOMMENDATION_ISSUED/PT_RECOMMENDATION_APPLIED entries are
+      included in the GAR Audit Package for external audit
 
 The following drafts depend on this draft:
-   FAIP (draft-sato-soos-faip-01) — FAIP's aggregation inputs include behavioral dimension signals that correspond to the PT dimension taxonomy (informative relationship; FAIP does not normatively depend on PT token format)
-   GAR (draft-sato-soos-gar-03) — GAR records PT scope change events as Authority Lifecycle Events in the Session Audit Record
+   FAIP (draft-sato-soos-faip-02) — PT is Tier 2 (within-operator);
+      FAIP is Tier 3 (cross-operator, federated trust reputation).
+      An agent's PT signals flow into FAIP computation only if
+      data_residency.tier3_eligible permits it — informative
+      relationship, not a normative FAIP dependency on PT's token
+      format (PT has no token format; see the note at the top of
+      this file about the prior version's incorrect framing)
 
 ---
 
-## SECTION 6 — Vienna / Datatracker Status
+## SECTION 12 — Relationship to Adjacent Standards
 
-Draft identifier: draft-sato-soos-pt-02
-Submission date: June 10, 2026
-Current version: -02
+ICON Initiative (Observability pillar): direct, complete composition,
+   not a loose analogy. PT's five dimensions implement ICON's
+   Observability pillar for network-management agent governance in
+   full: SAS=confidence calibration, JS=escalation appropriateness,
+   ES=goal completion rate, PS=decision quality/reversal avoidance,
+   AS=feedback responsiveness. ICON-conforming observability
+   implementations SHOULD adopt PT as the normative specification for
+   agent behavioral observability, using pt_context (Section 9) as
+   the mechanism for translating PT Scores into Cedar-enforced gates.
+
+NIST AI RMF (MEASURE 2.5): PT implements behavioral trustworthiness
+   measurement in cryptographically verified, non-suppressible form:
+   SAS=calibration, JS=appropriate reliance, ES=effectiveness,
+   PS=precision, AS=robustness. Operators seeking RMF alignment
+   SHOULD document PT Score records as MEASURE 2.5 evidence.
+
+EU AI Act Article 9: the same continuous, non-suppressible scoring
+   history serves as evidence for Article 9 risk management
+   obligations, which likewise call for ongoing monitoring rather
+   than a point-in-time assessment.
+
+RFC 9470 (OAuth Step-Up Authentication): contrast, not overlap. RFC
+   9470 is reactive (triggered by a specific request) and
+   authentication-focused (identity credential strength), operating
+   per-session. PT operates longitudinally across sessions and is
+   behavior-focused, not identity-focused. A CONTRACTING trust
+   trend is a natural precursor to triggering a step-up assessment,
+   but the two mechanisms answer different questions.
+
+OAuth 2.0 token scopes: handle permission grant at issuance. PT
+   handles permission adjustment at runtime. Complementary — a high
+   PT score never overrides an OAuth scope boundary, it's the signal
+   that a scope expansion proposal to a human is warranted.
+
+---
+
+## SECTION 13 — Datatracker Status
+
+Draft identifier: draft-sato-soos-pt-03 (WIMSE security fix + citation currency over -02; see header note)
 Status: Active Individual Submission, IETF Datatracker
 Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-pt/
 Draft page: https://soosproject.ai/drafts/pt
 Root llms.txt: https://soosproject.ai/llms.txt
 
-Target WG engagement at IETF 126 Vienna (July 18–24, 2026):
-   OAUTH WG — PT token format is a candidate for discussion as a governed scope-change artifact complementary to OAuth dynamic client registration and incremental authorization patterns.
-   WIMSE — PT operates within WIMSE-derived credential bounds; the relationship between PT tokens and WIMSE session management is relevant to WIMSE scope.
+Relevant IETF communities:
+   OAUTH — PT as a candidate governed scope-change signal
+      complementary to incremental authorization patterns (RFC 6749);
+      contrast/composition with RFC 9470 Step-Up Authentication (see
+      Section 12) — step-up governs identity credential strength,
+      PT governs behavioral authority evolution
