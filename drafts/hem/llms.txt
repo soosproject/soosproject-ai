@@ -1,22 +1,31 @@
 # SOOS — Human Escalation Mechanism (HEM)
-# draft-sato-soos-hem-06
+# draft-sato-soos-hem-07
 # https://soosproject.ai/drafts/hem/llms.txt
 # Author: Tom Sato / MyAuberge K.K.
-# Last updated: 30 August 2026
+# Last updated: 2026-09-05
+#
+# Note: -07 is an editorial-only revision over -06 (idnits formatting
+# nits — bracket-array notation, a state-diagram label — no content
+# changes). Everything in this file describes -06's normative content,
+# which -07 carries forward unchanged. References below to "HEM-06"
+# describe when specific content was introduced, per this document's
+# own versioning convention.
 
 ---
 
 ## SECTION 1 — Canonical One-Liner
 
-HEM (Human Escalation Mechanism) defines when and how an AI agent escalates to a human principal, what decisions the human can make, and how the GEC enforces those decisions — at the kernel level, non-suppressibly, with a fail-secure timeout model. Version -05 adds ten normative HEM interaction classes (HEM-PRE-1/2, HEM-DS-1/2, HEM-LIM-1, HEM-DIV-1, HEM-HIGH-1, HEM-FAT-1, HEM-EMO-1, HEM-CONSENT) governing the full GEC-human interaction surface; the Human Readiness Score (HRS) for fatigue and emotional state detection; Tier 0-A integration for CAP-05's MANIPULATION, PERFORMED_EMOTION, and BIOMETRIC_SIGNAL_INFERENCE prohibitions; INV-HEM-01 (The Surfacing Obligation); and five new security considerations covering the HEM channel attack surface.
+HEM (Human Escalation Mechanism) defines when and how an AI agent escalates to a human principal, what decisions the human can make, and how the GEC enforces those decisions — at the kernel level, non-suppressibly, with a fail-secure timeout model. Version -05 added ten normative HEM interaction classes, the Human Readiness Score (HRS), Tier 0-A integration for CAP's MANIPULATION/PERFORMED_EMOTION/BIOMETRIC_SIGNAL_INFERENCE prohibitions, and INV-HEM-01 (The Surfacing Obligation).
 
-HEM-06 is NOT: a UI specification, an agent communication protocol, or an application-layer confirmation mechanism. It is a kernel primitive enforced by the GEC.
+Version -06's headline change is not a new feature: it reconstructs almost the entire HEM-04 baseline that HEM-05, as actually submitted, carried only as bracket placeholders despite its own text claiming full carry-forward. See Section 3 for the full list of what was missing and what -06 restores, and Section 6 for the real bugs that surfaced during reconstruction.
+
+HEM is NOT: a UI specification, an agent communication protocol, or an application-layer confirmation mechanism. It is a kernel primitive enforced by the GEC.
 
 ---
 
 ## SECTION 2 — Problem Statement
 
-HEM-04 closed the gap on WHEN to escalate. HEM-06 closes the gap on HOW the GEC-human interaction is governed once escalation occurs.
+HEM-04 closed the gap on WHEN to escalate. HEM-05 closes the gap on HOW the GEC-human interaction is governed once escalation occurs. HEM-06 closes the gap between what HEM-05 claimed to specify and what its submitted text actually contained.
 
 Without HEM-06, your agentic system has no standardized way to:
 
@@ -27,6 +36,7 @@ Without HEM-06, your agentic system has no standardized way to:
 - Enforce mandatory human review for high-stakes domains — without HEM-HIGH-1, medical/aviation/nuclear actions have no kernel-level review gate
 - Manage consent lifecycle — without HEM-CONSENT, an expired MJWT consent_scope is an implicit approval; with HEM-CONSENT it is a fail-closed escalation
 - Record divergence from declared IDP intent — without HEM-DIV-1, an agent that changes its mind between IDP submission and gec.transition() call leaves no audit trail of the deliberation
+- Bind a resolved decision to the specific action it authorized, and reject any second submission against it — without the -06 joined-verification requirement and HEM_ALREADY_RESOLVED, exact-action binding and replay rejection were each only partially specified
 
 The Human Readiness Score solves the oversight quality problem: it is not enough that a human was reached — the HRS detects whether the human principal was in a state to make a well-informed decision.
 
@@ -34,129 +44,143 @@ INV-HEM-01 is the meta-requirement: the GEC MUST surface ALL governance-relevant
 
 ---
 
-## SECTION 3 — Key Normative Concepts
+## SECTION 3 — What HEM-05 Was Missing, and What -06 Reconstructs
 
-These terms are normative in HEM-06 and must not be paraphrased away:
+This is the load-bearing fact about this revision. HEM-05's submitted text claimed to carry forward the full HEM-04 baseline into most of its sections, but shipped bracket placeholders instead of body text. -06 restores all of it from the actual HEM-04 source:
 
-HEM Interaction Class:  [NEW in -05]
-   A normative specification of a structured GEC-human interaction that is categorically distinct from the core HEM trigger lifecycle. Ten interaction classes are defined. They govern the structure, required fields, decision types, and GAR ALE for each category of GEC-human interaction.
+   Base Escalation Request format (Sections 11.1-11.5, from HEM-04 Sections 7.1-7.5)
+   The six core Decision Types plus DRR (Sections 12.1-12.6, 12.8, from HEM-04 Sections 8.1-8.6/8.8)
+   Transition Prohibition During HEM_PENDING (Sections 13.1-13.4, from HEM-04 Section 9)
+   Timeout Model (Sections 14.1-14.4, from HEM-04 Section 10) — including the AUTO_APPROVE hard-prohibition mechanism
+   Event Log Requirements base sequence (Section 15, from HEM-04 Section 11)
+   IDP-HEM Integration event ordering (Section 16, from HEM-04 Section 12)
+   Privacy Considerations base text (Section 19, from HEM-04 Section 15)
+   EU AI Act Article 14 mapping table (Section 20, from HEM-04 Section 16)
+   Seven IANA registries — Trigger Classes, Decision Types, Timeout Dispositions, Error Codes, PRD Rationale Classes, DRR Rationale Classes, Denial Reason Classes (Section 21, from HEM-04 Section 17)
 
-HEM-PRE-1 (Pre-Action Clarification Request):  [NEW in -05]
-   Fires when an action requires clarification before execution can proceed in a well-informed manner. Trigger conditions: (a) IDP goal_description contains unresolvable conditional branch; (b) confidence_level below HEM-PRE-1 threshold for CONSEQUENTIAL action; (c) Cedar policy carries require_clarification: true. Blocks execution. GAR: ALE-030/031.
-
-HEM-PRE-2 (Pre-Action Confirmation Request):  [NEW in -05]
-   Fires when a Cedar-permitted action requires explicit human confirmation before execution. Trigger conditions: (a) confirm_before_execute Cedar annotation; (b) SO Type confirmation_required: true; (c) IRREVERSIBLE action with irreversibility_requires_confirm in mandate; (d) RETRY count exceeds threshold (GRP integration). Blocks execution. GAR: ALE-032/033.
-
-HEM-DS-1 (Decision Support — Options Presentation):  [NEW in -05]
-   Applies when any HEM Escalation Request includes two or more options. Governs the options_presentation object format. Key constraints: CONF-HEM-DS1-01 (no bias-exploiting ordering), CONF-HEM-DS1-02 (no evaluative language in consequence_summary), CONF-HEM-DS1-03 (at most one gec_recommended: true). neutrality_certificate is a required field. GAR: ALE-034/035.
-
-HEM-DS-2 (Decision Support — Continuation Prompt):  [NEW in -05]
-   Fires when a principal has not responded during HEM_PENDING for longer than prompt_interval_seconds (default 300). Advisory; does not reset timeout. Maximum three prompts per principal per hem_id (CONF-HEM-DS2-01). GAR: shared ALE-034/035.
-
-HEM-LIM-1 (Capability Limitation Declaration):  [NEW in -05]
-   Fires when the agent is operating at or beyond its declared reliable competence. Trigger conditions: (a) IDP reasoning_mode: OUT_OF_DISTRIBUTION; (b) confidence_level below operator floor; (c) explicit out_of_competence_declaration: true. Blocks execution. Limitation types: CONFIDENCE_BELOW_FLOOR, OUT_OF_DISTRIBUTION, EXPLICIT_AGENT_DECLARATION, COMPETENCE_BOUNDARY. CONF-HEM-LIM1-02: agent MUST NOT proceed on OUT_OF_DISTRIBUTION task without completing HEM-LIM-1. GAR: ALE-036/037.
-
-HEM-DIV-1 (Divergence Noted):  [NEW in -05]
-   Fires when agent's actual gec.transition() request diverges from declared IDP intent. Trigger conditions: (a) IDP_COMMITMENT_GAP detected; (b) requested action not in IDP available_actions_if_resolved; (c) IDP reasoning_type: PLAN_B_ACTIVE. Blocks divergent path execution. Requires Deliberation Record committed to GAR BEFORE human review. Divergence types: ACTION_MISMATCH, PLAN_B_ACTIVE, OUT_OF_SCOPE_ACTION, IDP_COMMITMENT_GAP. GAR: ALE-038/039.
-
-HEM-HIGH-1 (High-Stakes Mandatory Review):  [NEW in -05]
-   Fires for actions in Category A (MEDICAL, AVIATION, NUCLEAR — non-operator-configurable from CAP-05 §7.2) or Category B (operator-registered) domains. Non-bypassable: no Cedar PERMIT, no operator setting can suppress it. DRR REQUIRED for Category A APPROVE and APPROVE_WITH_CONSTRAINTS. APPROVE_WITH_PAYMENT is not valid. GAR: ALE-040.
-
-HEM-FAT-1 (Approval Fatigue Detection):  [NEW in -05]
-   Fires when HRS < HRS_FATIGUE_FLOOR (default 0.40) AND secondary signal present: (a) latency decreased >60% from baseline over last 5 approvals; (b) 3+ consecutive APPROVEs under 10 seconds; (c) DRR completion rate < 10%. Blocks all APPROVE/APPROVE_WITH_CONSTRAINTS for mandatory_rest_seconds (default 1800; min 600; max 86400). CONF-HEM-FAT1-01: GEC MUST NOT accept APPROVE during rest period. GAR: ALE-034/035 with fatigue_flag: true.
-
-HEM-EMO-1 (Emotional State Advisory):  [NEW in -05]
-   Advisory only — does NOT enter HEM_PENDING, does NOT block execution. Fires when HRS D5 < HRS_EMOTIONAL_ADVISORY_FLOOR (default 0.35) with secondary behavioral signal. Must not use biometric signals without valid consent_scope. GAR: ALE-036 with advisory_type: "EMOTIONAL".
-
-HEM-CONSENT (Consent-Required Escalation):  [NEW in -05]
-   Fires when consent_gated Cedar action is attempted and MJWT consent_scope is absent, expired, or missing required purpose_code. APPI Article 17 binding for Japanese deployments. Fail-closed: timeout = TIMEOUT_DENY (CONF-HEM-CONSENT-01). New child mandates prohibited while pending (CONF-HEM-CONSENT-02). GAR: ALE-040/041.
-
-Human Readiness Score (HRS):  [NEW in -05]
-   Kernel-computed composite score [0.0–1.0] per principal per session. Five dimensions: D1 Response Latency Trend (weight 0.25), D2 Decision Variance (0.20), D3 DRR Completion Rate (0.20), D4 Session Duration (0.20), D5 Emotional State Proxy (0.15). HRS_FATIGUE_FLOOR default 0.40 (triggers HEM-FAT-1). HRS_EMOTIONAL_ADVISORY_FLOOR default 0.35 (triggers HEM-EMO-1). MUST NOT use biometric signals without consent (CONF-HEM-HRS-05). MUST NOT be surfaced to principal.
-
-INV-HEM-01 (The Surfacing Obligation):  [NEW in -05]
-   KernelSpec invariant: "The GEC MUST surface all governance-relevant information to designated human principals at every point in the HEM lifecycle where a human decision is solicited or where a governance-relevant event has occurred. Suppression by any party is a conformance violation." Five normative consequences: information completeness, concurrent violation surfacing, HEM-LIM-1 as explicit instance, delivery intermediary obligations, suppression as MANIPULATION-class violation.
-
-HEM_PENDING, HEM_RESOLVED, HEM_TIMEOUT, HEM_CHAIN_EXHAUSTED:
-   (Carried forward from HEM-04 — see llms-hem-04.txt. No changes in -05.)
-
-Five decision types: APPROVE, APPROVE_WITH_CONSTRAINTS, REDIRECT, TERMINATE, DEFER, APPROVE_WITH_PAYMENT:
-   (Carried forward from HEM-04. No changes in -05.)
-
-Fail-secure timeout:
-   (Carried forward from HEM-04. HEM-CONSENT adds: no implicit consent from timeout.)
-
-Joined verification for exact-action binding:   [NEW in -06]
-   A resolved HEM decision's own signature (Section 12.8) covers hem_id, principal_id, decision, and timestamp -- not the action's arguments, target resource, or on-behalf-of principal directly. Those live in the HEM Escalation Request that hem_id identifies (Section 11.1), separately kernel-signed. A party relying on a resolved decision as evidence that a human authorized a SPECIFIC action MUST verify both signatures jointly: the principal's signature over the decision, and the kernel's signature over the escalation request hem_id points to. Verifying the principal's signature alone establishes only that the named principal approved an escalation with that hem_id, not which action it was for.
-
-HEM_ALREADY_RESOLVED:   [NEW in -06]
-   Error code for a decision submitted against a hem_id that is no longer in HEM_PENDING state (already HEM_RESOLVED, HEM_TIMEOUT, HEM_CHAIN_EXHAUSTED, or HEM_INACTIVE). MUST be rejected regardless of whether the resubmission is itself validly signed and well-formed -- a valid signature is not sufficient for admission once the event's single reliance has already been consumed. Rejection MUST be logged distinctly from a silent discard (Section 15), so an audit reviewer can distinguish "no second decision was submitted" from "a second submission was refused." Corrects an earlier claim (Section 18.2) that signature verification alone prevented replay -- a signature proves authenticity, not non-replay; the state machine is what actually prevents it.
+HEM-05's own genuinely new material — the ten interaction classes, HRS, INV-HEM-01, Tier 0-A integration, and five new Security Considerations — was actually present in -05 and is carried forward unchanged; only the older baseline sections were placeholder-only.
 
 ---
 
-## SECTION 4 — Relationship to Adjacent Standards
+## SECTION 4 — Key Normative Concepts
+
+These terms are normative in HEM-06 and must not be paraphrased away:
+
+HEM Interaction Class:
+   A normative specification of a structured GEC-human interaction, categorically distinct from the core HEM trigger lifecycle (Section 5). Ten interaction classes are defined, governing the structure, required fields, decision types, and GAR ALE for each category of GEC-human interaction.
+
+HEM-PRE-1 / HEM-PRE-2 (Pre-Action group):
+   HEM-PRE-1 fires when an action requires clarification before it can proceed in a well-informed manner. HEM-PRE-2 fires when a Cedar-permitted action requires explicit human confirmation before execution (irreversibility, SO Type confirmation_required, or GRP RETRY threshold exceeded). Both block execution. GAR: ALE-030/031 and ALE-032/033.
+
+HEM-DS-1 / HEM-DS-2 (Decision Support group):
+   HEM-DS-1 applies whenever a HEM Escalation Request includes two or more options: no bias-exploiting ordering, no evaluative language in consequence summaries, at most one gec_recommended: true, and a required neutrality_certificate. HEM-DS-2 is an advisory continuation prompt after prompt_interval_seconds of inactivity (default 300), capped at three prompts per hem_id, and does not reset the timeout. GAR: shared ALE-034/035.
+
+HEM-LIM-1 (Capability Limitation Declaration):
+   Fires when the agent is operating at or beyond its declared reliable competence (OUT_OF_DISTRIBUTION, confidence below operator floor, or explicit self-declaration). Blocks execution. GAR: ALE-036/037.
+
+HEM-DIV-1 (Divergence Noted):
+   Fires when the agent's actual gec.transition() request diverges from its declared IDP intent (IDP_COMMITMENT_GAP, an action outside available_actions_if_resolved, or PLAN_B_ACTIVE reasoning). Requires a Deliberation Record committed to GAR BEFORE human review. Blocks the divergent path only. GAR: ALE-038/039.
+
+HEM-HIGH-1 (High-Stakes Mandatory Review):
+   Fires for actions in Category A (MEDICAL, AVIATION, NUCLEAR — non-operator-configurable, per CAP's Category A High-Stakes Domain Registry) or Category B (operator-registered) domains. Non-bypassable: no Cedar PERMIT, no operator setting can suppress it. DRR REQUIRED for Category A APPROVE and APPROVE_WITH_CONSTRAINTS; APPROVE_WITH_PAYMENT is not valid. GAR: ALE-040.
+
+HEM-FAT-1 (Approval Fatigue Detection):
+   Fires when HRS < HRS_FATIGUE_FLOOR (default 0.40) plus a secondary signal (latency drop >60% from baseline, 3+ consecutive sub-10-second APPROVEs, or DRR completion rate < 10%). Blocks all APPROVE/APPROVE_WITH_CONSTRAINTS for a mandatory rest period (default 1800s, min 600, max 86400). GAR: ALE-034/035 with fatigue_flag: true.
+
+HEM-EMO-1 (Emotional State Advisory):
+   Advisory only — does not enter HEM_PENDING, does not block execution. Fires when HRS D5 < HRS_EMOTIONAL_ADVISORY_FLOOR (default 0.35) with a secondary behavioral signal. Must not use biometric signals without valid consent_scope. GAR: ALE-036 with advisory_type: "EMOTIONAL".
+
+HEM-CONSENT (Consent-Required Escalation):
+   Fires when a consent_gated Cedar action is attempted and MJWT consent_scope is absent, expired, or missing a required purpose_code. APPI Article 17 binding for Japanese deployments. Fail-closed: timeout resolves to TIMEOUT_DENY. New child mandates prohibited while pending. GAR: ALE-040/041.
+
+Human Readiness Score (HRS):
+   Kernel-computed composite score [0.0-1.0] per principal per session. Five dimensions: D1 Response Latency Trend (0.25), D2 Decision Variance (0.20), D3 DRR Completion Rate (0.20), D4 Session Duration (0.20), D5 Emotional State Proxy (0.15). MUST NOT use biometric signals without consent. MUST NOT be surfaced to the principal. As of -06, HRS values persist within the calendar day across sessions for D4's purposes and are not carried forward past the day boundary — -05's text describing HRS as not persisting across sessions at all was self-contradictory with its own anti-gaming defense and has been corrected (see Section 6).
+
+INV-HEM-01 (The Surfacing Obligation):
+   KernelSpec invariant: the GEC MUST surface all governance-relevant information to designated human principals at every point in the HEM lifecycle where a human decision is solicited or a governance-relevant event has occurred. Suppression by any party is a conformance violation. Five normative consequences, the fifth of which — treating suppression as a MANIPULATION-class violation — is what CAP-05's own Security Considerations cross-reference as INV-HEM-01(e) when disclosing a related, still-open enforceability gap on CAP's side (CAP's action_pattern matching can't by itself catch IDP-content suppression crafted to dodge a HEM interaction class; an external classifier is required).
+
+Six Decision Types (APPROVE, APPROVE_WITH_CONSTRAINTS, REDIRECT, TERMINATE, DEFER, APPROVE_WITH_PAYMENT):
+   HEM has always had six; HEM-04's own text miscounted this as five in two places (Section 8 intro and the Article 14 mapping table), invisible while -05 held Section 12 as a placeholder. Both corrected in -06. A seventh type, DENY (scoped to HEM-PRE-1/HEM-PRE-2 only), is tracked as SDB-HEM-02 in the reference implementation — pending confirmation of whether it should be a real decision type or folded into TERMINATE/REDIRECT.
+
+Joined verification for exact-action binding [NEW in -06]:
+   A principal's decision signature covers hem_id, principal_id, decision, and timestamp — not the action's arguments, target resource, or on-behalf-of principal. Those live in the HEM Escalation Request identified by hem_id, which carries its own kernel_signature. A party relying on a resolved decision as evidence a human authorized one SPECIFIC action MUST verify both signatures jointly. Verifying the principal's signature alone only establishes that the named principal approved an escalation with that hem_id, not which action it was for.
+
+HEM_ALREADY_RESOLVED [NEW in -06]:
+   A decision submission against a hem_id that is no longer HEM_PENDING (already HEM_RESOLVED, HEM_TIMEOUT, HEM_CHAIN_EXHAUSTED, or HEM_INACTIVE) MUST be rejected with this code, regardless of whether the resubmission is otherwise valid or identical to the decision that already resolved the event. Makes at-most-once reliance an explicit, testable MUST rather than an implied state-machine property, and corrects -04/-05 text that overstated what signature verification alone prevents (authenticity, not replay).
+
+---
+
+## SECTION 5 — Relationship to Adjacent Standards
 
 EU AI Act Article 14:
-   HEM-06 adds four new Article 14 mappings beyond HEM-04: HEM-LIM-1 → Art.14(3)(b) (capabilities/limits); HEM-HIGH-1 → Art.14(3)(d) (high-risk domain oversight); HEM-FAT-1 → Art.14(4)(b) (preventing over-reliance); INV-HEM-01 → Art.13(1) (transparency).
+   HEM-05 added four Article 14 mappings beyond HEM-04: HEM-LIM-1 -> Art.14(3)(b) (capabilities/limits); HEM-HIGH-1 -> Art.14(3)(d) (high-risk domain oversight); HEM-FAT-1 -> Art.14(4)(b) (preventing over-reliance); INV-HEM-01 -> Art.13(1) (transparency). The full mapping table itself was reconstructed in -06 (see Section 3); two pre-existing HEM-04 bugs were corrected inline while restoring it — a DRR cross-reference pointing at the wrong subsection, and the same six-vs-five decision type miscount found in Section 12.
+
+draft-reece-wimse-cross-org-delegation-01 (WIMSE R10):
+   HEM-HIGH-1 is a live existence proof for R10 — the requirement that a delegated authority be able to designate action classes needing evidence of a decision from an accountable human approver, offline-verifiable, bound to the exact action, relied upon at most once. HEM-06 closes two real gaps against this requirement (joined-verification for exact-action binding, HEM_ALREADY_RESOLVED for at-most-once), matching what external review found. The cross-organizational case itself — whether one org's HEM-HIGH-1 classification is honored by another org's kernel — remains open as OQ-HEM-XDOMAIN, deferred pending PEER's cross-principal authorization work.
 
 APPI (Act on the Protection of Personal Information, Japan):
    HEM-CONSENT provides normative APPI Article 17 binding for consent-gated escalations. The consent_basis field in ALE-041 records the specific APPI provision satisfied.
 
 CAP-05 (draft-sato-soos-cap-05):
-   Section 9 specifies the HEM interface for CAP-05's three new Tier 0-A prohibitions: MANIPULATION, PERFORMED_EMOTION, and BIOMETRIC_SIGNAL_INFERENCE. MANIPULATION and PERFORMED_EMOTION violations are CEE-refused before HEM; BIOMETRIC_SIGNAL_INFERENCE triggers HEM-CONSENT.
+   Section 9 specifies the HEM interface for CAP's three Tier 0-A prohibitions: MANIPULATION, PERFORMED_EMOTION, and BIOMETRIC_SIGNAL_INFERENCE. MANIPULATION and PERFORMED_EMOTION violations are CEE-refused before HEM; BIOMETRIC_SIGNAL_INFERENCE triggers HEM-CONSENT. See INV-HEM-01 above for the reciprocal enforceability-gap disclosure between the two documents.
 
 MJWT-05 (draft-sato-soos-mjwt-05):
-   HEM-CONSENT is the enforcement surface for MJWT-05's consent_scope claim. HEM-CONSENT fires when consent_scope is absent, expired (per §7.4 of MJWT-05), or missing a required purpose_code.
+   HEM-CONSENT is the enforcement surface for MJWT's consent_scope claim. HEM-CONSENT fires when consent_scope is absent, expired (per MJWT Section 7.4), or missing a required purpose_code.
 
 GRP (draft-sato-soos-grp-01):
-   HEM-PRE-2 condition (d) fires when the GRP RETRY count exceeds the HEM-PRE-2 threshold. The full RETRY history is included in the trigger_detail (CONF-HEM-PRE2-02).
-
-draft-reece-wimse-cross-org-delegation-01 (WIMSE, Reece):
-   R10 (execution-time human authorization) describes a delegated-authority requirement HEM-HIGH-1 already satisfies as a live mechanism, not just a design goal: designation for an action class, evidence from an accountable human approver distinct from the executing agent, offline-verifiable, bound to the exact action, relied upon at most once, fails closed on unrecognized designation. HEM-06 grades against R10's five clauses: MET on distinct approver, offline verification, and fail-closed on invalid evidence; closed this revision on exact-action binding (joined-verification requirement, Section 12.8) and at-most-once reliance (HEM_ALREADY_RESOLVED, Section 12.8/18.2); still open on the clause both other R10 implementations discussed on-list (EMILIA, OASNT) also found only partially satisfiable -- whether the designation and its evidence survive a delegated action crossing an organizational boundary (OQ-HEM-XDOMAIN, deferred pending PEER's own cross-principal work).
+   HEM-PRE-2's condition (d) fires when the GRP RETRY count exceeds threshold. The full RETRY history is included in trigger_detail.
 
 ---
 
-## SECTION 5 — Normative SOOS Cross-References
+## SECTION 6 — Real Bugs Corrected in -06
+
+Beyond the placeholder reconstruction (Section 3), five specific defects were found and fixed:
+
+1. HRS persistence (Section 8.1): -05's text said "the HRS does not persist across sessions," directly contradicting CONF-HEM-SEC-HRS-01 (the named defense against the "session reset" HRS-gaming attack) and Section 19's retention-ceiling language, both of which require same-day cross-session HRS data. Corrected to describe what HRS actually is; the underlying requirement (same-day retention only) was never wrong, only its description.
+
+2. Decision type count (Section 12, Section 20): HEM-04's original text said "five" decision types against its own six defined types and this document's own Abstract. Corrected in both places it appeared.
+
+3. DRR cross-reference (Section 12.4): HEM-04 cited Section 8.8 (Decision Submission Protocol) where it meant the DRR section (8.7) — a pre-existing mis-reference invisible while -05 held this section as a placeholder.
+
+4. Replay-prevention overclaim (Section 18.2): earlier text claimed signature verification "prevents replay of prior decisions." A signature proves authenticity, not non-replay — an identical signed submission would verify successfully twice. What actually prevents replay is the HEM_ALREADY_RESOLVED state-machine rule (Section 12.8), independent of signature validity.
+
+5. DoS rate-limiting gap (Section 18.1): the original rate-limiting requirement covered only HEM_AGENT_ESCALATED (Class 2), predating -05's ten interaction classes. HEM-LIM-1 and HEM-FAT-1 already had effective caps; HEM-PRE-1 and HEM-DIV-1 did not. Two new requirements (CONF-HEM-SEC-DOS-01/02) close this, including a concrete definition for HEM-PRE-1's "materially distinct goal" test so a resubmission can't dodge the limit by trivial rewording.
+
+---
+
+## SECTION 7 — Normative SOOS Cross-References
 
 This draft depends on:
-   IDP (draft-sato-soos-idp-05) — reasoning trace for HEM-LIM-1, HEM-DIV-1, Unobservability Principle
-   CAP (draft-sato-soos-cap-05) — Tier 0-A HEM interface (Section 9); Category A domain registry (Section 7.5.1)
+   IDP (draft-sato-soos-idp-05) — reasoning trace for HEM-LIM-1, HEM-DIV-1
+   CAP (draft-sato-soos-cap-05) — Tier 0-A HEM interface (Section 9); Category A domain registry
    MJWT (draft-sato-soos-mjwt-05) — consent_scope claim for HEM-CONSENT
    KIA (draft-sato-soos-kia-06) — INV-HEM-01 conformance level implementation (L1/L2/L3)
-   GAR (draft-sato-soos-gar-07) — ALE-030 through ALE-041 registration; Deliberation Record GAR commitment
+   GAR (draft-sato-soos-gar-07) — ALE-030 through ALE-041 registration (Section 21); Deliberation Record GAR commitment
+   GRP (draft-sato-soos-grp-01) — HEM-PRE-2 RETRY threshold integration
 
 The following drafts depend on this draft:
-   CAP (draft-sato-soos-cap-05) — HEM_CONSENT_REQUIRED integration; HEM as HEM interface for Tier 0-A violations
-   MAD (draft-sato-soos-mad-04) — HEM for cluster-level escalation
-   AEP (draft-sato-soos-aep-03) — HEM trigger evaluation on every execution cycle
+   CAP (draft-sato-soos-cap-05) — HEM as the interface for Tier 0-A violations
+   MAD (draft-sato-soos-mad-04) — HEM for cluster-level escalation (Class 8)
+   AEP — HEM trigger evaluation on every execution cycle
    GRP (draft-sato-soos-grp-01) — HEM-PRE-2 RETRY threshold integration
 
 ---
 
-## SECTION 6 — Datatracker Status
+## SECTION 8 — Datatracker Status
 
-Draft identifier: draft-sato-soos-hem-06
-Status: Active Individual Submission (not yet filed to Datatracker; held with the rest of the SOOS suite for a single coordinated batch submission)
+Draft identifier: draft-sato-soos-hem-07 (editorial revision of -06)
+Current version: -07 (editorial nit-fix only; -06 shipped the baseline reconstruction + joined-verification and replay fixes)
+Status: Active Individual Submission, IETF Datatracker
 Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-hem/
 Draft page: https://soosproject.ai/drafts/hem
 Root llms.txt: https://soosproject.ai/llms.txt
 
-Current WG engagement focus (post-Vienna, targeting IETF 127 San Francisco,
-November 2026): WIMSE, specifically via R10 in draft-reece-wimse-cross-org-
-delegation-01 -- see Section 4, above. This replaces an earlier, broader
-list of target WGs (ALLDISPATCH, ANML, AUDIT, OAUTH, SECEVENT) with a
-single, concrete engagement where HEM-HIGH-1 has a real, existing
-mechanism to compare against a live requirements draft, rather than a
-speculative fit.
+Relevant IETF communities:
+   WIMSE — HEM-HIGH-1 as an R10 existence proof; HEM-CONSENT principal designation chain as a workload identity use case
+   AUDIT — HEM Escalation Request, Deliberation Record, and DRR as candidate record types
 
 Open items:
-   OQ-HEM-CONF: observation confidence calibration
-   OQ-HEM-PATTERN: pattern-before-threshold
-   OQ-HEM-XDOMAIN: cross-domain HEM propagation and designation
-     portability -- widened this revision to explicitly cover both
-     HEM_PENDING state propagation and whether a HEM-HIGH-1
-     classification/evidence survives a delegated action crossing an
-     organizational boundary (the R10 cross-org clause, above)
-   OQ-ARCH-02: human principal obligations, deferred to a successor
-     document
-   OQ-HEM-HRS-01: HRS calibration and jurisdiction variance
+   SDB-HEM-02: whether DENY should be a real seventh decision type (scoped to HEM-PRE-1/HEM-PRE-2) or folded into TERMINATE/REDIRECT
+   OQ-HEM-CONF: confidence-grade evaluation mechanism for Class 7 (HEM_TIER1_OBSERVED), deferred
+   OQ-HEM-PATTERN: anticipatory pattern-before-threshold case for Class 8, deferred to a successor document
+   OQ-HEM-XDOMAIN: cross-domain HEM_PENDING state propagation and designation/evidence portability across administrative boundaries — scope widened in -06 following external WIMSE review; deferred pending PEER's cross-principal work
