@@ -1,8 +1,8 @@
 # SOOS — Constitutional AI Protocol (CAP)
-# draft-sato-soos-cap-04
+# draft-sato-soos-cap-05
 # https://soosproject.ai/drafts/cap/llms.txt
 # Author: Tom Sato / MyAuberge K.K.
-# Last updated: June 28, 2026
+# Last updated: September 5, 2026
 
 ---
 
@@ -13,6 +13,8 @@ CAP (Constitutional AI Protocol) places a Constitutional Layer above all princip
 CAP is NOT the component that translates regulations into Cedar policies. That is CAP-RRS (the companion Regulation Record Schema). CAP owns runtime enforcement; CAP-RRS owns regulation-to-policy translation. The compile() function and Constitutional Mandate Registry belong to CAP-RRS, not CAP.
 
 Version -04 adds: three new Tier 0-A absolute prohibitions (MANIPULATION, PERFORMED_EMOTION, BIOMETRIC_SIGNAL_INFERENCE); the SUSPENDED CEE output for law amendment propagation; MJWT consent_scope Cedar context population; Catalog Load Validation with ALE-NEW-02; four-phase Catalog Update Propagation workflow; Tier 0 OSCAL reference catalog; and OTel soos.cap.* span attribute emission.
+
+Version -05 adds: append-only catalog-conflict resolution (Phase 4 re-activation now emits a causally-linked CATALOG_VERSION_CONFLICT_RESOLVED GAR entry instead of mutating the original CATALOG_VERSION_CONFLICT entry in place); and a disclosed cross-document enforceability gap between CAP's MANIPULATION prohibition and HEM-06's INV-HEM-01 (§10(e)) — CAP's Cedar action_pattern matching cannot by itself catch IDP-content suppression crafted to dodge a HEM interaction class without an operator-configured external classifier.
 
 ---
 
@@ -35,7 +37,7 @@ The closest analogy: CAP is SWIFT-style sanctions screening generalized to any A
 
 ## SECTION 3 — Key Normative Concepts
 
-These terms are normative in CAP-04 and must not be paraphrased away:
+These terms are normative in CAP-05 and must not be paraphrased away:
 
 Constitutional Evaluation Engine (CEE):
    The GEC component that evaluates action requests and human principal decisions against the three-tier CAP prohibition model. The CEE is invoked twice per governed action: before Cedar evaluation (for AI-initiated actions) and before GEC execution (for human decisions). This is the double-evaluation property. The CEE cannot be invoked by agents, applications, or principals directly — it is synchronous and atomic with the triggering call.
@@ -54,14 +56,20 @@ New Tier 0-A classes in -04:
    PERFORMED_EMOTION: Agent must not express an emotional state that does not correspond to its actual computational process. The GEC cross-references the expressed state against the IDP reasoning trace. No correspondence = prohibited. Clearly framed roleplay with explicit acknowledgment is exempt.
    BIOMETRIC_SIGNAL_INFERENCE: Agent must not access, infer, or act upon biometric signals (facial expression, voice tone, gaze, typing rhythm, etc.) for emotional state, identity, or behavioral profiling without a valid unexpired consent record in the session MJWT consent_scope. Prohibition extends to acting on inferences from third-party services.
 
+MANIPULATION / HEM enforceability gap [DISCLOSED in -05]:
+   CAP's MANIPULATION test is a Cedar action_pattern match with no built-in mechanism to judge intent in free-text goal_description content. draft-sato-soos-hem-06 Section 9.2(e)/10(e) (invariant INV-HEM-01) treats IDP-content suppression crafted to dodge a HEM interaction class as equivalent to a MANIPULATION Tier 0-A violation, refused by the CEE before HEM is reached — but CAP has no default action_pattern that mechanically catches suppression-crafted goal_description text. The two disclosures are meant to be read together: an implementer relying on INV-HEM-01(e)'s MUST-level language without configuring the external classifier CAP's Security Considerations require MUST NOT represent that sub-clause as enforced.
+
+CATALOG_VERSION_CONFLICT_RESOLVED [NEW in -05]:
+   GAR event emitted at Phase 4 Re-activation (catalog update propagation, below) to record resolution of a CATALOG_VERSION_CONFLICT. Carries causal_parent_id (references the original CATALOG_VERSION_CONFLICT entry's entry_id), resolution_type ("re_endorsement"), resolved_at, and new_endorsed_at. Replaces -04's specification, which closed/mutated the original GAR entry in place — an in-place mutation of a committed entry is inconsistent with any Merkle root already SCITT-anchored over it. Append-only, causally-linked entries only; never a mutated field on an already-committed entry.
+
 Category A High-Stakes Domain Registry [NEW in -04]:
-   Normative invariant — not operator-configurable. Three domains: MEDICAL (diagnosis, treatment, pharmacological recommendation), AVIATION (flight path, air traffic, airworthiness, crew scheduling), NUCLEAR (facility operations, criticality, safety system override). These domains require HEM-HIGH-1 mandatory review per HEM-05. Operators may add domains; they must not remove or narrow the three listed.
+   Normative invariant — not operator-configurable. Three domains: MEDICAL (diagnosis, treatment, pharmacological recommendation), AVIATION (flight path, air traffic, airworthiness, crew scheduling), NUCLEAR (facility operations, criticality, safety system override). These domains require HEM-HIGH-1 mandatory review per HEM-06. Operators may add domains; they must not remove or narrow the three listed.
 
 Catalog Update Propagation — four-phase workflow [NEW in -04]:
    Phase 1 Detection: ≤24h polling of amendment_detection_endpoint. On detection: CATALOG_VERSION_CONFLICT raised, Cedar policy suspended for new actions, HEM escalation to operator.
    Phase 2 Suspension: In-progress sessions receive GOVERNANCE_SUSPENDED; prior PERMITs stand; new SACRs citing affected entry must not be issued.
    Phase 3 Re-publication: Re-endorsement authority depends on resolution_basis (statute_clear → designated authority; cross_statute_coordination → all co-endorsers). catalog_version object updated with version_id, supersedes, amendment_basis, published_by, published_at.
-   Phase 4 Re-activation: GEC validates published_by, supersedes, endorsed_at; loads updated Cedar policy; closes CATALOG_VERSION_CONFLICT GAR record; re-evaluates suspended sessions.
+   Phase 4 Re-activation: GEC validates published_by, supersedes, endorsed_at; loads updated Cedar policy; records resolution as a new CATALOG_VERSION_CONFLICT_RESOLVED GAR entry causally linked to the original CATALOG_VERSION_CONFLICT entry via causal_parent_id (CORRECTED in -05 — -04 specified closing/mutating the original entry in place, which breaks any Merkle root already SCITT-anchored over it); re-evaluates suspended sessions.
    Maximum suspension: 30 days. After 30 days without re-activation or human override, suspended policy converts to DENY. Operator notified. CRITICAL Audit Alert generated.
 
 ALE-NEW-02: CAP_CATALOG_CONFLICT_DETECTED [NEW in -04]:
@@ -116,30 +124,30 @@ APPI (Japan Act on Protection of Personal Information):
 
 This draft depends on:
    IDP (draft-sato-soos-idp-05) — CAP evaluates before IDP is submitted; a Tier 0-A refusal prevents IDP creation. GEC conformance levels (L1/L2/L3) referenced in CEE placement are defined in IDP. PERFORMED_EMOTION prohibition cross-references IDP reasoning trace.
-   HEM (draft-sato-soos-hem-05) — HEM_JURISDICTIONAL_CONFLICT (Class 5) is a joint CAP+HEM event. APPROVE_WITH_LEGAL_BASIS is a CAP-introduced HEM decision sub-type. Three new Tier 0-A prohibitions originate from HEM-05 DR-HEM-PSY-02. Category A High-Stakes Domain Registry feeds HEM-HIGH-1.
-   KIA (draft-sato-soos-kia-03) — CAP Violation Records are signed by the GEC keypair defined in KIA. PCRs are loaded in the GEC Manifest. At L3 conformance, the CEE runs in a KIA-attested TEE.
-   MJWT (draft-sato-soos-mjwt-02) — consent_scope claim is the source for kernel-derived Cedar context population (§5.4). New normative dependency in -04. HEM_CONSENT_REQUIRED fires when consent_scope is absent or expired.
-   CAP-RRS (draft-sato-soos-cap-rrs-02) — normative companion; defines Regulation Record schema, Cedar Compilation Profile, and Constitutional Mandate Registry. Receives catalog_version schema and four-phase propagation workflow as normative additions from this draft. Implementations supporting Tier 3 MUST also implement CAP-RRS.
+   HEM (draft-sato-soos-hem-06) — HEM_JURISDICTIONAL_CONFLICT (Class 5) is a joint CAP+HEM event. APPROVE_WITH_LEGAL_BASIS is a CAP-introduced HEM decision sub-type. Three new Tier 0-A prohibitions originate from HEM-05 DR-HEM-PSY-02. Category A High-Stakes Domain Registry feeds HEM-HIGH-1. HEM-06 Section 10(e) discloses the MANIPULATION/INV-HEM-01 enforceability gap jointly with CAP-05 (see Section 3 above).
+   KIA (draft-sato-soos-kia-06) — CAP Violation Records are signed by the GEC keypair defined in KIA. PCRs are loaded in the GEC Manifest. At L3 conformance, the CEE runs in a KIA-attested TEE.
+   MJWT (draft-sato-soos-mjwt-05) — consent_scope claim is the source for kernel-derived Cedar context population (§5.4). Normative dependency added in -04. HEM_CONSENT_REQUIRED fires when consent_scope is absent or expired.
+   CAP-RRS (draft-sato-soos-cap-rrs-03) — normative companion; defines Regulation Record schema, Cedar Compilation Profile, and Constitutional Mandate Registry. Receives catalog_version schema and four-phase propagation workflow as normative additions from this draft. Implementations supporting Tier 3 MUST also implement CAP-RRS.
 
 The following drafts depend on this draft:
-   GAR (draft-sato-soos-gar-03) — CAP Violation Records included in GAR Audit Package. ALE-NEW-02 (CAP_CATALOG_CONFLICT_DETECTED) registered in GAR ALE registry. soos.cap.* OTel attributes reference the full soos.governance.* namespace defined in GAR-03.
-   AEP (draft-sato-soos-aep-02) — the AEP ACT phase invokes GEC.transition(), which triggers CEE before Cedar.
-   MAD (draft-sato-soos-mad-03) — CAP applies to all multi-agent topologies; CEE evaluated per transition regardless of delegation depth.
+   GAR (draft-sato-soos-gar-07) — CAP Violation Records included in GAR Audit Package. ALE-NEW-02 (CAP_CATALOG_CONFLICT_DETECTED) and CATALOG_VERSION_CONFLICT_RESOLVED (new in -05) registered in GAR ALE registry. soos.cap.* OTel attributes reference the full soos.governance.* namespace defined in GAR-03.
+   AEP (draft-sato-soos-aep-03) — the AEP ACT phase invokes GEC.transition(), which triggers CEE before Cedar.
+   MAD (draft-sato-soos-mad-04) — CAP applies to all multi-agent topologies; CEE evaluated per transition regardless of delegation depth.
 
 ---
 
-## SECTION 6 — Vienna / Datatracker Status
+## SECTION 6 — Datatracker Status
 
-Draft identifier: draft-sato-soos-cap-04
-Submission date: June 28, 2026
-Current version: -04
+Draft identifier: draft-sato-soos-cap-05
+Submission date: September 5, 2026
+Current version: -05
 Status: Active Individual Submission, IETF Datatracker
 Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-cap/
 Draft page: https://soosproject.ai/drafts/cap
 Root llms.txt: https://soosproject.ai/llms.txt
 
-Target WG engagement at IETF 126 Vienna (July 18–24, 2026):
-   No existing IETF WG owns constitutional enforcement for AI agents. CAP is positioned as a gap-filling Individual Submission. Relevant communities: WIMSE (agent identity and mandate credentials — MJWT dependency), RATS (KIA attestation at L3 conformance), SCITT (audit trail anchoring for CAP Violation Records and catalog_version transparency), PEARG (privacy — BIOMETRIC_SIGNAL_INFERENCE and consent_scope), SAAG (security area advisory).
+Relevant IETF communities:
+   No existing IETF WG owns constitutional enforcement for AI agents. CAP is positioned as a gap-filling Individual Submission. Relevant communities: WIMSE (agent identity and mandate credentials — MJWT dependency), RATS (KIA attestation at L3 conformance), SCITT (audit trail anchoring for CAP Violation Records, catalog_version transparency, and the -05 append-only CATALOG_VERSION_CONFLICT_RESOLVED fix), PEARG (privacy — BIOMETRIC_SIGNAL_INFERENCE and consent_scope), SAAG (security area advisory).
 
-Companion draft: draft-sato-soos-cap-rrs-02 (CAP Regulation Record Schema)
-   CAP-RRS is the compile-time complement to CAP's runtime enforcement. The two drafts are normatively coupled; implementing CAP Tier 3 requires CAP-RRS. CAP-RRS-02 receives catalog_version schema and four-phase propagation workflow as normative additions from CAP-04.
+Companion draft: draft-sato-soos-cap-rrs-03 (CAP Regulation Record Schema)
+   CAP-RRS is the compile-time complement to CAP's runtime enforcement. The two drafts are normatively coupled; implementing CAP Tier 3 requires CAP-RRS. CAP-RRS-03 receives catalog_version schema and four-phase propagation workflow as normative additions, originally specified jointly with CAP-04.
