@@ -1,14 +1,14 @@
 # SOOS — CAP Regulation Record Schema (CAP-RRS)
-# draft-sato-soos-cap-rrs-02
+# draft-sato-soos-cap-rrs-03
 # https://soosproject.ai/drafts/cap-rrs/llms.txt
 # Author: Tom Sato / MyAuberge K.K.
-# Last updated: July 1, 2026
+# Last updated: September 5, 2026
 
 ---
 
 ## SECTION 1 — Canonical One-Liner
 
-CAP-RRS is the compiler that translates human-readable legal obligations into machine-executable Cedar security policies. CAP owns runtime enforcement of those policies; CAP-RRS owns regulation-to-policy translation. The CAP/CAP-RRS boundary: CAP-RRS → Cedar Compilation Profile → Cedar policies → CAP runtime enforcement. The compile() function and Constitutional Mandate Registry belong to CAP-RRS, not CAP. CAP-RRS is not the parent of the Cedar policy lifecycle — CAP and CAP-RRS are peers at different phases of the same pipeline.
+CAP-RRS is the compiler that translates human-readable legal obligations into machine-executable Cedar policies, and the schema for the Regulation Record artifact that carries a legal obligation's provenance end to end. CAP owns runtime enforcement of the compiled policies; CAP-RRS owns regulation-to-policy translation, versioning, certification, and the law-changed/interpretation-changed lifecycle. The compile() function and Constitutional Mandate Registry (CMR) belong to CAP-RRS, not CAP. CAP-RRS also owns the Tier 3 resource-policy escalation classes (HEM_TIER3_ANTICIPATORY / HEM_TIER3_OBSERVED) that CAP defers to it.
 
 ---
 
@@ -16,76 +16,94 @@ CAP-RRS is the compiler that translates human-readable legal obligations into ma
 
 Without CAP-RRS, your CAP-governed deployment has no standardized way to:
 
-- Translate regulations into Cedar policies without custom engineering per jurisdiction per regulation — every legal engineer encoding a GDPR rule produces a different Cedar policy structure; CAP-RRS provides the standard Regulation Record format that makes encoded regulations composable and interoperable
-- Version, audit, and retire regulation records as legal requirements change — regulations are not static; CAP-RRS's package manager model (Constitutional Mandate Registry) gives regulation records semantic versions, dependency declarations, and formal retirement procedures
-- Prove to a regulator that the Cedar policies currently loaded in your GEC are the correct encoding of the regulation they care about — the Regulation Record carries a Certification Model: who signed it, under what authority, with what review date
-- Handle the Tier 3 resource and usage policy lifecycle — the resource_policy schema, anticipatory assessment behavior (HEM_TIER3_ANTICIPATORY), and Natural Breakpoint Declaration protocol are specified in CAP-RRS, not CAP
+- Translate regulations into Cedar policies without custom engineering per jurisdiction per regulation — the Regulation Record schema and Cedar Compilation Profile make encoded regulations composable, and the Constitutional Mandate Registry (CMR) distributes them as signed, versioned packages
+- Prove which statutory version a loaded Cedar policy was certified against, and keep that provenance current when the law changes — the Law Reference Interface (LRI) generic model (Japan e-LAWS, EU ELI, US USLM profiles) and the Statute-Primacy Rule specify exactly this
+- Detect a statutory amendment or a superseding interpretation, suspend the affected Cedar policy, and resolve it without ever mutating the GAR record that logged the original conflict — the CATALOG_VERSION_CONFLICT / INTERPRETATION_SUPERSEDED event pair and their *_RESOLVED counterparts specify this append-only
+- Handle the Tier 3 resource and usage policy lifecycle — HEM_TIER3_ANTICIPATORY (pre-mission) and HEM_TIER3_OBSERVED (mid-mission) escalation, the Execution Options Package, and Natural Breakpoint Declaration are specified in CAP-RRS, not CAP
+- Certify who may sign a Regulation Record at what tier, and verify that signature before a GEC will load it — the five-tier Certification Model (FOUNDATION / REGULATORY_BODY / LICENSED_PROVIDER / OPERATOR / SELF)
 
 ---
 
 ## SECTION 3 — Key Normative Concepts
 
-These terms are normative in CAP-RRS-01 and must not be paraphrased away:
+These terms are normative in CAP-RRS-03 and must not be paraphrased away:
 
 Regulation Record:
-   The machine-compilable JSON artifact that encodes a legal obligation as a CAP prohibition or permission. A Regulation Record contains: the prohibition_class, the action_pattern (Cedar action vocabulary describing what the regulation covers), the jurisdiction, the authority_ref (legal citation), the ambiguity_flag, and the Certification Model (who signed it and under what authority). A Regulation Record is the unit of compilation in CAP-RRS — one record per legal obligation, composable into Cedar policy sets.
+   The JSON artifact that encodes a legal obligation as a CAP-tiered Cedar policy source. Top-level fields include: record_id (format {publisher_id}.{instrument_code}.{article}), schema_version, tier ("0-A"/"0-B"/"1"/"2"/"3"), jurisdiction_scope (territories, legal_system, supranational_body), legal_source (instrument_name, instrument_code, article, official_url; treaty_citation REQUIRED for Tier 0-A), title, operative_clause, agent_check (trigger + prohibition_condition/permission_condition + required_context_fields + post_deny_protocol), conflict_declarations, certification (certification_tier, certified_by, certification_date, certification_statement, record_signature, certification_expiry), effective_date, sunset_date, review_trigger, record_version (semver), supersedes, and — REQUIRED as of -02 — authority_source_uri.
 
 Cedar Compilation Profile:
-   The normative specification of how Regulation Records are compiled into Cedar policies. The Cedar Compilation Profile defines: the Cedar action vocabulary, the mapping from prohibition_class to Cedar action patterns, the conflict resolution behavior when two records produce contradictory Cedar policies, and the schema for the compiled Cedar policy set. Implementations MUST follow the Cedar Compilation Profile to produce interoperable Cedar policies from Regulation Records.
+   The normative specification for compiling Regulation Records into Cedar. Compiles in tier order (0-A, 0-B, 1, 2, 3; lexicographic by record_id within a tier). Maps agent_check.prohibition_condition to a Cedar forbid clause and permission_condition to a Cedar permit clause; annotates every compiled policy with record_id, tier, jurisdiction_scope.territories, effective_date, and record_version so the GEC can produce structured DENY reason codes. A conforming compiler MUST reject records with invalid/expired certification and MUST NOT compile a record past its sunset_date.
 
-Constitutional Mandate Registry:
-   The package manager for law. The Constitutional Mandate Registry is a versioned, auditable repository of Regulation Records. Deployments declare their regulation dependencies (by jurisdiction, regulation type, and version) in a manifest. The GEC loads the Cedar policy set compiled from the declared dependencies at initialization. Updating a dependency triggers a new GEC initialization with the updated Cedar policy set. The Registry model makes legal compliance manageable like software dependency management.
+Constitutional Mandate Registry (CMR):
+   The signed package ecosystem Regulation Records are distributed through. A package (cmr://{publisher}.{instrument}@{version}) bundles records, a changelog, declared conflicts, and an Ed25519 package_signature, versioned per Semantic Versioning: MAJOR (an operative clause tightened — operator review REQUIRED), MINOR (new clauses added — review RECOMMENDED), PATCH (metadata only — automatic upgrade PERMITTED). GECs subscribe to signed Update Notifications and respond ACCEPT / REVIEW_AND_APPROVE / PIN. Every distributed update as of -02 carries a catalog_version object (Section 10.5).
 
 compile():
-   The function that transforms a set of Regulation Records (from the Constitutional Mandate Registry) into a Cedar policy set loadable by the GEC's CEE. compile() resolves conflicts between records, applies the Cedar Compilation Profile, and produces a signed, versioned Cedar policy artifact. The compiled artifact carries a hash that the GEC Manifest records; a GEC running a compiled Cedar policy set whose hash does not match the Manifest entry has an invalid attestation.
+   cap.compile() resolves conflict_declarations, applies the Cedar Compilation Profile, and produces a signed, versioned Cedar policy set the GEC loads. Developer workflow: cap.import("cmr://...") per regulation dependency, cap.operator_policy()/cap.resource_policy() for Tier 2/3, then compile() — no Cedar authored by hand except for debugging.
 
 Certification Model:
-   The component of a Regulation Record that specifies who may sign it and under what authority. Certification levels: Legal Engineer (minimum — encoding by a qualified professional), Legal Counsel review (reviewed and approved by qualified legal counsel), Audit Principal signature (formal Audit Principal sign-off, required for Tier 1 enforcement), Regulatory Authority signature (highest assurance — issued by the regulatory authority whose law the record encodes).
+   Five publisher tiers, each scoped to specific CAP tiers: FOUNDATION (ATP Foundation; Tier 0-A/0-B only, certified against treaty text), REGULATORY_BODY (national/supranational authority; Tier 1 within statutory jurisdiction), LICENSED_PROVIDER (third party licensed by a regulatory body; Tier 1 within license scope), OPERATOR (the deploying org; Tier 2, no external approval), SELF (developer/operator; Tier 3, no external approval). Publishers register an Ed25519 keypair with the CMR; FOUNDATION and REGULATORY_BODY publishers undergo identity verification. A GEC MUST verify registration currency, signature, certification_expiry, and tier-consistency before loading any package.
 
 Conflict Declaration Model:
-   The component of CAP-RRS that specifies how conflicts between Regulation Records are declared and resolved at compilation time. When two records produce contradictory Cedar policies (one PERMITS, one PROHIBITS the same action pattern in the same jurisdiction), the compile() function applies the Conflict Declaration Model: MOST_PROTECTIVE (the PROHIBIT wins), record the conflict, or flag as DISPUTED for human review before the compiled policy set can be loaded.
+   How the compiler surfaces contradictory Regulation Records. Static conflicts (same action_scope, structurally contradictory conditions) MUST be caught at compile time. Runtime conflicts (only certain Cedar context combinations trigger both policies) are surfaced as HEM_JURISDICTIONAL_CONFLICT (Class 5) annotations the GEC evaluates live. A conflict_declaration with strategy OPERATOR_DECLARES_PRIORITY blocks compilation until the operator signs a resolution declaration (resolution_id, the two record_ids, resolution, legal_basis, authorized_by) that is itself stored in the GAR audit record.
+
+Law Reference Interface (LRI) [NEW in -02]:
+   The jurisdiction-neutral schema (authority_source block: law_id, article_ref, version_identifier, retrieved_at, amendment_detection_endpoint, interpretation_endpoint, endorsement) that gives a Regulation Record machine-readable provenance back to living statutory text. Three profiles are defined: Japan (e-LAWS), EU (ELI), US (USLM) — the same relationship OSCAL profiles (NIST 800-53, ISO 27001) have to the underlying OSCAL catalog format. The endorsement block's resolution_basis field records the legal character of the endorsement: statute_clear, interpretive_ruling (REQUIRES resolution_instrument_id), internal_conflict_resolution, or cross_statute_coordination (REQUIRES co_endorsement_required/co_endorsers).
+
+Statute-Primacy Rule [NEW in -02]:
+   A Cedar policy never overrides a statute. When amendment_detection_endpoint (polled <=24h) surfaces an amendment posterior to endorsed_at, the GEC MUST raise CATALOG_VERSION_CONFLICT, provisionally suspend the Cedar policy for new actions, and escalate to HEM — the session stays open, in-progress actions already PERMITted are protected by the Safe Harbor Clause. An interpretive (not textual) change fires the parallel INTERPRETATION_SUPERSEDED event via interpretation_endpoint instead, routing to the authority that issued the superseded ruling rather than the primary statutory authority.
+
+CATALOG_VERSION_CONFLICT_RESOLVED / INTERPRETATION_SUPERSEDED_RESOLVED [NEW in -03]:
+   Resolution (re-endorsement or human override) of either conflict type is now its own GAR event, carrying resolves_event_id back to the original conflict entry's entry_id, resolved_at, resolved_by, new_endorsed_at, and rationale (REQUIRED for human_override). The original conflict event is never modified. -02's schema instead populated a "resolution" field on the original entry after the fact — an in-place mutation of an already-committed, potentially SCITT-anchored GAR record. -03 fixes this at its actual origin: the same mutation pattern had already been independently caught and fixed downstream, in GAR's own ALE-NEW-03 (Section 12.17(c)) and in CAP's Section 8.9.4 Phase 4 step (5), before being traced back to this document as the schema's root cause.
+
+Tier 3 / HEM Integration:
+   HEM_TIER3_ANTICIPATORY (Class 8) fires pre-mission when estimated cost exceeds remaining budget under a policy with anticipatory_assessment: true — execution halts before any step begins. HEM_TIER3_OBSERVED (Class 9) fires mid-mission at warning_threshold_pct — execution does NOT halt immediately; the GEC commits to completing the next Natural Breakpoint first. Both classes construct an Execution Options Package (full_mission_viable, budget figures, an array of natural_breakpoints each with cost/viability/value_delivered, an array of recourse_options — SCOPE_REDUCTION / COMMERCIAL_UPGRADE / TEMPORAL_DEFERRAL — and a recommended_option) for the human decision. Agents under a policy with natural_breakpoint_required: true MUST declare their Natural Breakpoints before beginning multi-step execution.
 
 ---
 
 ## SECTION 4 — Relationship to Adjacent Standards
 
 OSCAL (Open Security Controls Assessment Language):
-   OSCAL makes regulations machine-readable. CAP makes them machine-enforceable. CAP-RRS is the bridge: it consumes OSCAL-formatted regulation records as a normative input to the Cedar Compilation Profile. SOOS is the first protocol suite designed to enforce OSCAL-expressed controls at AI agent runtime. The Constitutional Mandate Registry can consume OSCAL catalogs and profiles directly; legal engineers work in OSCAL; CAP-RRS compiles the OSCAL output to Cedar.
+   OSCAL makes regulations machine-readable; CAP makes them machine-enforceable. CAP-RRS is the bridge, consuming OSCAL-formatted control records as input to the Cedar Compilation Profile. The LRI Profile model (Section 9) is explicitly the same pattern as OSCAL profiles: e-LAWS, ELI, and USLM are LRI profiles of one underlying LRI schema, the way NIST 800-53 and ISO 27001 are OSCAL profiles of one underlying OSCAL catalog format.
 
-FedRAMP (Federal Risk and Authorization Management Program):
-   FedRAMP's RFC-0024 process for AI security control baselines is a direct CAP-RRS use case. FedRAMP control baselines expressed in OSCAL can be compiled via CAP-RRS into Cedar policy sets loadable by SOOS GECs governing federal agency AI deployments. CAP-RRS is the technical mechanism by which FedRAMP AI baselines become machine-executable at runtime.
+SCITT (Supply Chain Integrity, Transparency and Trust):
+   The Constitutional Mandate Registry applies SCITT transparency-log principles to legal records: the statute is the claim, the certifying publisher is the SCITT issuer, and CMR registration carries a SCITT inclusion proof. This is why -03's fix to make conflict resolution append-only (rather than mutating a committed entry) matters — an entry anchored under a SCITT inclusion proof cannot honestly be edited afterward.
 
 Cedar (AWS — Apache 2.0):
-   Cedar is the policy language that CAP-RRS compiles to and that CAP's CEE evaluates. CAP-RRS does not define Cedar — it defines the normative mapping from Regulation Records to Cedar policies. CAP-RRS is Cedar-version-aware; the Cedar Compilation Profile specifies which Cedar version's action vocabulary is used.
+   Cedar is the policy language CAP-RRS compiles to and CAP's CEE evaluates. CAP-RRS does not define Cedar semantics — it defines the normative mapping (Cedar Compilation Profile) from Regulation Records to Cedar policies, tier-ordered and annotated for GEC reason-code production.
 
-EU AI Act Article 5 and Article 9:
-   CAP-RRS enables automated loading of EU AI Act Article 5 prohibition records as Regulation Records. A CAP-RRS Regulation Record for EU Article 5(1)(a) (subliminal manipulation) produces the Cedar policy that the CAP CEE evaluates for every EU-jurisdiction SO Type. CAP-RRS is the authoring-time component; CAP is the runtime enforcement.
+EU AI Act Article 5, GDPR Article 22:
+   Both require that automated decisions be explainable/disclosable. CAP's PTD framework (CAP-05 Section 12a) satisfies this at the kernel level; CAP-RRS Regulation Records are the structured record PTD discloses from, at SUMMARY or FULL level via ptd_endpoint.
 
 ---
 
 ## SECTION 5 — Normative SOOS Cross-References
 
 This draft depends on:
-   CAP (draft-sato-soos-cap-03) — CAP defines the CEE that evaluates the Cedar policies CAP-RRS compiles; Tier 3 resource and usage policy enforcement in CAP REQUIRES CAP-RRS; the prohibition_class registry defined in CAP is the namespace for Regulation Records
+   CAP (draft-sato-soos-cap-05) — CAP defines the CEE that evaluates the Cedar policies CAP-RRS compiles; Tier 3 resource/usage policy enforcement in CAP requires CAP-RRS; CAP Section 8.9.4's catalog-conflict resolution fix was itself propagated from this document's -03 schema correction.
+   HEM (draft-sato-soos-hem-06) — Tier 3 Class 8 (HEM_TIER3_ANTICIPATORY) and Class 9 (HEM_TIER3_OBSERVED) escalation, and the general CATALOG_VERSION_CONFLICT / INTERPRETATION_SUPERSEDED HEM escalation path, are both CAP-RRS-defined HEM interaction classes.
 
 The following drafts depend on this draft:
-   CAP (draft-sato-soos-cap-03) — normatively coupled; implementing CAP Tier 3 requires CAP-RRS; the compile() function is normatively defined in CAP-RRS and referenced in CAP
-   KIA (draft-sato-soos-kia-03) — the GEC Manifest includes the hash of the compiled Cedar policy set produced by CAP-RRS compile(); a Manifest mismatch invalidates the KIA attestation
+   CAP (draft-sato-soos-cap-05) — normatively coupled; implementing CAP Tier 3 requires CAP-RRS; compile() is normatively defined here and referenced there.
+   GAR (draft-sato-soos-gar-07) — CATALOG_VERSION_CONFLICT, CATALOG_VERSION_CONFLICT_RESOLVED, INTERPRETATION_SUPERSEDED, and INTERPRETATION_SUPERSEDED_RESOLVED are all registered in the GAR ALE registry; the compiled Cedar policy set's hash is recorded in the GEC Manifest.
+   KIA (draft-sato-soos-kia-06) — the GEC Manifest includes the hash of the compiled Cedar policy set produced by CAP-RRS compile(); a Manifest mismatch invalidates the KIA attestation.
 
 ---
 
-## SECTION 6 — Vienna / Datatracker Status
+## SECTION 6 — Datatracker Status
 
-Draft identifier: draft-sato-soos-cap-rrs-02
-Submission date: June 10, 2026
-Current version: -01
+Draft identifier: draft-sato-soos-cap-rrs-03
+Submission date: September 5, 2026
+Current version: -03
 Status: Active Individual Submission, IETF Datatracker
 Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-cap-rrs/
 Draft page: https://soosproject.ai/drafts/cap-rrs
 Root llms.txt: https://soosproject.ai/llms.txt
 
-Target WG engagement at IETF 126 Vienna (July 18–24, 2026):
-   No existing IETF WG owns regulation-to-policy compilation for AI systems. CAP-RRS is positioned as a gap-filling Individual Submission. Relevant communities: SAAG (security area), PEARG (privacy regulation encoding), OSCAL Foundation and NIST OSCAL team (pre-Vienna outreach prioritized per DR-OSCAL-01).
+What -02 and -03 actually changed:
+   -02 added three new sections (Law Reference Interface, Statute-Primacy Rule, Operational Requirements) but, per -03's own changelog, shipped Sections 5 through 8 (Cedar Compilation Profile, Conflict Declaration Model, Certification Model, CMR Protocol) as bracket placeholders with no body text. -03 reconstructs all four sections from the original -01 text (unchanged in substance) and fixes the Statute-Primacy Rule's event schemas at their root: catalog-conflict resolution is now a new, causally-linked GAR event (CATALOG_VERSION_CONFLICT_RESOLVED / INTERPRETATION_SUPERSEDED_RESOLVED) rather than a mutation of the original conflict entry.
 
-Post-Vienna scope:
-   OQ-OSCAL-02: CAP-RRS-02 update scope after NIST OSCAL team conversation — whether the OSCAL input format should be normatively specified in a future version or remain informative.
+Relevant IETF communities:
+   No existing IETF WG owns regulation-to-policy compilation for AI systems. CAP-RRS is positioned as a gap-filling Individual Submission. Relevant communities: SAAG (security area), PEARG (privacy regulation encoding), SCITT (the CMR's transparency-log model and the -03 append-only fix), OSCAL Foundation and NIST OSCAL team (OSCAL-to-LRI bridge).
+
+Open questions (Section 13):
+   OQ-CAP-PATTERN (pattern-before-threshold), OQ-CAP-XJURIS (cross-jurisdiction Tier 1 compilation — runtime jurisdiction-selection algorithm not yet specified), JP-OQ-03/JP-OQ-04 (Japan interpretation registry — e-LAWS API v2 does not yet expose interpretive instruments; formal spec deferred to draft-sato-soos-cap-rrs-jp-00), JP-OQ-01 (co-endorsement authority for cross-prefectural rules — individual governors vs. National Governors' Association).
