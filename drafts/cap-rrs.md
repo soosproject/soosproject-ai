@@ -1,7 +1,7 @@
 # CAP Regulation Record Schema
 
 Layer 3 — Governance
-**draft-sato-soos-cap-rrs-01**
+**draft-sato-soos-cap-rrs-03**
 See this URL for full draft protocol [Datatracker](https://datatracker.ietf.org/doc/draft-sato-soos-cap-rrs/)
 See [SOOS Stack](/stack) implementation
 
@@ -23,6 +23,8 @@ CAP-RRS defines the schema for a Regulation Record: the machine-readable artefac
 
 CAP-RRS is directly relevant to the SCITT working group. A Regulation Record is a domain-specific application of SCITT transparency principles: the legal prohibition is the claim, the issuing authority is the SCITT issuer, and the inclusion proof anchors the record in the Constitutional Mandate Registry (CMR). CAP-RRS extends the SCITT supply chain transparency model to the legal compliance domain — where the "supply chain artefact" is a statutory prohibition.
 
+Version -03 fixes a defect that matters directly to SCITT: -02's `CATALOG_VERSION_CONFLICT` event schema specified a `resolution` field that started null and was populated later — an in-place mutation of an already-committed GAR entry, inconsistent with any SCITT inclusion proof anchored over it. This was the root specification of a pattern that had already been found and fixed downstream, in both GAR and CAP, without anyone tracing it back to its source. -03 fixes it here, at the schema's origin: resolution of both `CATALOG_VERSION_CONFLICT` and `INTERPRETATION_SUPERSEDED` is now a new event (`CATALOG_VERSION_CONFLICT_RESOLVED` / `INTERPRETATION_SUPERSEDED_RESOLVED`) that references the original via `resolves_event_id`, never a mutation of it.
+
 CAP-RRS is also relevant to the SACM working group, whose security assessment and continuous monitoring frameworks align with the Regulation Record's mandate for version control and audit trail.
 
 To engage on CAP-RRS: [IETF Datatracker](https://datatracker.ietf.org/doc/draft-sato-soos-cap-rrs/) · file issues at [GitHub](https://github.com/soosproject/soos-drafts)
@@ -34,6 +36,8 @@ If you are building an agentic AI system that operates under legal constraints, 
 CAP-RRS closes this gap by specifying the Regulation Record schema: a structured, signed artefact that maps a specific legal provision to a specific Cedar policy, with a version history, an issuing authority, a jurisdiction tag, and a SCITT inclusion proof. The kernel loads the Regulation Record and enforces the Cedar policy. The chain from statute to enforcement is machine-readable end-to-end.
 
 Without CAP-RRS: compliance is a document. With CAP-RRS: compliance is a kernel-loaded, Cedar-evaluated, GAR-audited enforcement record.
+
+CAP-RRS also owns the Tier 3 resource-policy lifecycle: what happens when an agent's mission is going to run over its resource budget. Rather than a hard stop mid-task, the GEC builds an Execution Options Package — the viable Natural Breakpoints the agent could stop at, and the recourse options (scope reduction, a commercial upgrade, waiting for budget reset) — and routes it to the human principal. If the budget is exhausted mid-mission rather than caught in advance, the GEC commits to finishing the next declared Natural Breakpoint before it stops, so your agent never leaves a half-finished result behind. See "Tier 3 resource policies and Natural Breakpoints" below.
 
 [TypeScript example →](https://github.com/soosproject/soos-examples/tree/main/cap-rrs)
 
@@ -57,7 +61,7 @@ For collaboration on jurisdiction-specific regulation encoding: [tomsato@myauber
 
 **What to tell your coding assistant:**
 
-> "I need to implement SOOS CAP-RRS (CAP Regulation Record Schema, draft-sato-soos-cap-rrs-01). This is an IETF protocol that defines the schema for encoding legal prohibitions as machine-readable Regulation Records. A Regulation Record maps a specific legal provision to a Cedar policy, assigned to a CAP prohibition tier. CAP-RRS provides two worked examples: Japan APPI Article 17 (Tier 1 purpose limitation) and FIEA Article 38 (Tier 0-B suitability obligation). Records are signed by an issuing authority and optionally anchored in a SCITT transparency log (CMR). The RFC Only procedure allows Tier 0-A encoding without publishing rule text."
+> "I need to implement SOOS CAP-RRS (CAP Regulation Record Schema, draft-sato-soos-cap-rrs-03). This is an IETF protocol that defines the schema for encoding legal prohibitions as machine-readable Regulation Records. A Regulation Record maps a specific legal provision to a Cedar policy, assigned to a CAP prohibition tier, and carries an authority_source block conforming to the Law Reference Interface (LRI) — a jurisdiction-neutral schema with profiles for Japan (e-LAWS), the EU (ELI), and the US (USLM). Records are signed by an issuing authority and optionally anchored in a SCITT transparency log (CMR). The RFC Only procedure allows Tier 0-A encoding without publishing rule text. When a statute is amended or its interpretation is superseded, the GEC raises a CATALOG_VERSION_CONFLICT or INTERPRETATION_SUPERSEDED event, suspends the Cedar policy, and escalates to HEM; resolution is always a new, separate GAR event (CATALOG_VERSION_CONFLICT_RESOLVED / INTERPRETATION_SUPERSEDED_RESOLVED) referencing the original via resolves_event_id — never a mutation of the original entry. CAP-RRS also owns Tier 3 resource-policy escalation: HEM_TIER3_ANTICIPATORY (pre-mission, Class 8) and HEM_TIER3_OBSERVED (mid-mission, Class 9) both hand the human principal an Execution Options Package of viable Natural Breakpoints and recourse options rather than a bare budget warning."
 
 **Key schema fields:**
 
@@ -75,6 +79,9 @@ For collaboration on jurisdiction-specific regulation encoding: [tomsato@myauber
 | `effective_date` | string | ISO 8601 date from which the record is enforceable |
 | `scitt_inclusion_proof` | object | SCITT CMR inclusion proof (if registered) |
 | `rfc_only` | boolean | True if rule text is withheld under RFC Only procedure |
+| `authority_source` | object | LRI block: law_id, article_ref, version_identifier, endorsement |
+| `resolution_basis` | string | Legal character of an endorsement — statute_clear / interpretive_ruling / internal_conflict_resolution / cross_statute_coordination |
+| `resolves_event_id` | string | On a *_RESOLVED event, the entry_id of the conflict event it resolves (never mutates) |
 
 **Worked example — APPI Article 17 (purpose limitation):**
 
@@ -124,6 +131,8 @@ For collaboration on jurisdiction-specific regulation encoding: [tomsato@myauber
 
 ## Worked examples — Japan regulatory encoding
 
+The two worked examples below use Japan's e-LAWS system, but the underlying Law Reference Interface (LRI) is jurisdiction-neutral: this document also defines LRI profiles for the EU (ELI, the European Legislation Identifier) and the US (USLM, United States Legislative Markup), the same way OSCAL profiles NIST 800-53 and ISO 27001 against one underlying catalog format. A jurisdiction with a stable law-publication system and a versioned law identifier can implement its own LRI profile.
+
 **APPI Article 17 — Purpose Limitation (Tier 1)**
 
 Japan's Act on Protection of Personal Information (APPI) Article 17 requires that personal information be used only for the purposes specified at collection. CAP-RRS encodes this as a Tier 1 prohibition: the principal can define the stated_purpose within the mandate, but the Cedar policy enforces that the agent's actual data processing action must match the stated purpose. A CEDAR_DENY on this policy produces a GAR record citing rr-jp-appi-art17-v1.
@@ -166,6 +175,8 @@ Legal text changes. When a statute is amended, the `amendment_detection_endpoint
 
 When the interpretation of a statute changes — via a court judgment, binding guidance, or administrative ruling — without the statutory text itself being amended, a separate `INTERPRETATION_SUPERSEDED` event fires via the `interpretation_endpoint`. The mechanism is the same: provisional suspension, GAR event, HEM escalation. The distinction matters because interpretive change and statutory amendment have different legal characters and route to different endorsing authorities.
 
+Resolution — re-endorsement of the amended statute, or a human override — is its own GAR event, `CATALOG_VERSION_CONFLICT_RESOLVED` or `INTERPRETATION_SUPERSEDED_RESOLVED`, carrying `resolves_event_id` back to the original conflict entry. As of -03 this is a hard requirement: the original suspension event is never edited, not even to record how it was resolved. GAR is append-only end to end, which matters for anyone anchoring these records in a SCITT transparency log.
+
 **The statute-primacy rule is absolute.** A Cedar policy does not override a statute. A GAR record whose `authority_source` traces to a superseded statutory version is valid as a historical record but does not authorize future actions.
 
 ### Stage 4 — Safe harbor for past actions
@@ -178,13 +189,26 @@ Some legal obligations span jurisdictions or require coordination between legall
 
 ---
 
+## Tier 3 resource policies and Natural Breakpoints
+
+CAP-RRS also owns the Tier 3 resource and usage policy lifecycle — the schema for what a Regulation Record looks like when the "compliance obligation" is an operator's own resource budget rather than a statute, and the HEM integration that fires when an agent mission threatens to exceed it.
+
+Two escalation classes cover the two ways a budget problem can surface:
+
+- **HEM_TIER3_ANTICIPATORY (Class 8)** — before a multi-step mission begins, the GEC has already determined the estimated cost exceeds the remaining budget. Execution halts before any step starts, and the decision routes to a human at STANDARD urgency.
+- **HEM_TIER3_OBSERVED (Class 9)** — mid-mission, consumption crosses the policy's warning threshold. The GEC does *not* stop immediately: it commits to completing the next declared Natural Breakpoint first, and escalates to a human at ELEVATED urgency in parallel.
+
+Both classes hand the human principal an **Execution Options Package** rather than a bare warning: which Natural Breakpoints are reachable and what each one delivers, and which recourse options are viable — scope reduction to a named breakpoint, a commercial budget upgrade, or waiting out a temporal reset — with a recommended option attached. A Natural Breakpoint is deliberately defined as a point where stopping still produces a complete, independently valuable deliverable — the point of the mechanism is that an agent running low on budget never gets cut off mid-sentence; it finishes something coherent and lets a human decide what happens next.
+
+---
+
 ## How this builds on existing work
 
 **SCITT (Supply Chain Integrity, Transparency and Trust)** provides the transparency statement model that Regulation Records build on. CAP-RRS applies SCITT to the legal domain: the statute is the supply chain claim, the issuing authority is the SCITT issuer, and the CMR is the transparency log. SCITT provides the cryptographic inclusion proof; CAP-RRS provides the domain-specific schema.
 
 **Cedar (Amazon open source)** is the policy engine that Regulation Records target. CAP-RRS does not define Cedar semantics — it defines how legal text is expressed as Cedar policies, and how those policies are packaged, signed, and versioned for kernel consumption.
 
-**GDPR Article 22 / EU AI Act Article 13** require that individuals be informed of automated decision-making rules. The PTD framework in CAP-03 satisfies this at the kernel level; CAP-RRS Regulation Records provide the structured record of which legal prohibitions are active, available at SUMMARY or FULL disclosure level through the ptd_endpoint.
+**GDPR Article 22 / EU AI Act Article 13** require that individuals be informed of automated decision-making rules. The PTD framework in CAP-05 satisfies this at the kernel level; CAP-RRS Regulation Records provide the structured record of which legal prohibitions are active, available at SUMMARY or FULL disclosure level through the ptd_endpoint.
 
 **OSCAL (NIST Open Security Controls Assessment Language)** defines the Catalog and Profile formats by which regulatory control frameworks are expressed as machine-readable documents. CAP-RRS Regulation Records operate at the next layer: a Regulation Record consumes an OSCAL-expressed control obligation and produces the Cedar-compilable enforcement specification the kernel loads. The CAP-RRS → Cedar pipeline is the runtime enforcement complement to the OSCAL → SSP/Component Model declaration pipeline. OSCAL makes regulations machine-readable; CAP makes them machine-enforceable.
 
@@ -210,13 +234,15 @@ No competing draft specifies a machine-readable regulation encoding schema for A
 
 **Statute drift:** Legal text changes. When a statute is amended, the Regulation Record must be updated and re-signed. CAP-RRS requires that prior record versions are retained in the CMR; kernels MUST load the current version and MAY retain prior versions for audit purposes.
 
+**Append-only conflict resolution (fixed in -03):** Through -02, resolving a `CATALOG_VERSION_CONFLICT` meant populating a `resolution` field on the original GAR entry after the fact — an in-place mutation of a committed, potentially SCITT-anchored record. -03 fixes this at its source: resolution is now always a separate event (`CATALOG_VERSION_CONFLICT_RESOLVED` or `INTERPRETATION_SUPERSEDED_RESOLVED`) linked to the original via `resolves_event_id`. The original conflict entry is never modified. This was the origin of a pattern independently caught and fixed downstream in both GAR and CAP before being traced back here.
+
 ---
 
 ## SOOS stack context
 
-CAP-RRS sits at **Level 3 — Governance**, as a direct companion to CAP. It depends on CAP (the prohibition tier model and Cedar evaluation engine that Regulation Records target), SCITT (the transparency infrastructure for the CMR), and KIA (the kernel attestation that confirms which Regulation Records are loaded). It is consumed by GAR (DENY events on CAP-RRS-derived Cedar policies cite the regulation_record_id in the audit record) and the PTD framework (CAP-03 §12a).
+CAP-RRS sits at **Level 3 — Governance**, as a direct companion to CAP. It depends on CAP (the prohibition tier model and Cedar evaluation engine that Regulation Records target), HEM (Tier 3 Class 8/9 escalation for resource-policy Natural Breakpoints), SCITT (the transparency infrastructure for the CMR), and KIA (the kernel attestation that confirms which Regulation Records are loaded). It is consumed by GAR (DENY events on CAP-RRS-derived Cedar policies cite the regulation_record_id in the audit record, and both resolution event types are registered in the GAR ALE registry) and the PTD framework (CAP-05 §12a).
 
-Related drafts: [CAP](/drafts/cap) · [GAR](/drafts/gar) · [KIA](/drafts/kia) · [IDP](/drafts/idp)
+Related drafts: [CAP](/drafts/cap) · [HEM](/drafts/hem) · [GAR](/drafts/gar) · [KIA](/drafts/kia) · [IDP](/drafts/idp)
 
 ---
 
@@ -224,6 +250,6 @@ Related drafts: [CAP](/drafts/cap) · [GAR](/drafts/gar) · [KIA](/drafts/kia) �
 
 - [File an issue on GitHub](https://github.com/soosproject/soos-drafts/tree/main/cap-rrs)
 - [IETF Datatracker — full draft text](https://datatracker.ietf.org/doc/draft-sato-soos-cap-rrs/)
-- [CAP](/drafts/cap) — the Constitutional Authority Protocol companion draft
-- [All Drafts](/drafts) — the complete 12-draft governance stack
+- [CAP](/drafts/cap) — the Constitutional AI Protocol companion draft
+- [All Drafts](/drafts) — the complete SOOS governance stack
 - Contact: [tomsato@myauberge.jp](mailto:tomsato@myauberge.jp)
