@@ -1,6 +1,6 @@
 # Agent Compliance Disclosure (ACD)
 Layer 5 — Resource Access Governance
-**draft-sato-soos-acd-00**
+**draft-sato-soos-acd-02**
 [Datatracker](https://datatracker.ietf.org/doc/draft-sato-soos-acd/) · [SOOS Stack](/stack)
 
 ---
@@ -49,7 +49,7 @@ Regulators may request ACD Records at any time via a human query (ALE-061: `ACD_
 
 **What to tell your coding assistant:**
 
-> "I am implementing the Agent Compliance Disclosure (ACD) Protocol from draft-sato-soos-acd-00. ACD defines a machine-to-machine compliance handshake between a SOOS GEC and external resource providers. The GEC must expose a `/.well-known/soos-acd` endpoint over HTTPS (TLS 1.3 only). When a resource provider sends GET with Accept: application/soos-acd+json, the GEC must: (1) run the four-check sequence per KEE-1 §4.3 — manifest validity (GEC Manifest current per KIA-03 §5.4), policy currency (cedar_policy_hash computed fresh), KIA attestation (key not revoked per KIA-03 §8), XPID revocation (not in registry per KIA-03 §6.5); (2) on all four passing, generate ACD Record JSON, canonicalize per RFC 8785, sign as JWS per RFC 7515 using KIA private key, return HTTP 200 with Content-Type: application/soos-acd+json; (3) on any check failing, return HTTP 403 with JSON body {error: 'ACD_CHECK_FAILED', failed_check: <1-4>, acd_session_id, timestamp}. The ACD Record is a JSON object with three layers. Layer 1 (Legal Identity): acd_session_id (UUID v4, CSPRNG), agent_xpid, governing_law, primary_jurisdiction (ISO 3166-1), jurisdictions[] (each: jurisdiction_code, regulatory_regime[], ptd_endpoint), terms_of_use_uri, liability_scope, acd_validity_not_before, acd_validity_not_after (max 30d, default 24h). Layer 2 (Constitutional Compliance): cap_profile_id, cap_profile_hash (SHA-256 of CAP Profile JSON, computed fresh), prohibition_tier_summary {tier_0a, tier_0b, tier_1, tier_2}, gec_manifest_ref, cedar_policy_hash (SHA-256 of active Cedar Policy Set, computed immediately before signing), cap_enforcement_attestation, hem_status (ACTIVE|SUSPENDED|ESCALATION_IN_PROGRESS), ptd_endpoint. Layer 3 (Principal and Redress): operator_id, deployer_id (conditional), principal_hierarchy_summary, redress_uri, human_escalation_path (AVAILABLE|NOT_AVAILABLE), gar_audit_endpoint, gar_sar_ref (optional), acd_timestamp, gec_signature (JWS detached), delegation_chain_depth (0=master, 1+=sub-agent), parent_kernel_id (conditional), mandate_scope_type (FULL|SLICE), mjwt_jti (REQUIRED — jti claim of the session MJWT). The GEC MUST log ALE-056 (ACD_QUERY_RECEIVED) on receipt and ALE-057 (ACD_RECORD_ISSUED) on issuance. GAR stores SHA-256(ACD Record body) in ALE-057, not the full record. Resource providers validate: JWS signature against KIA Party Registry, agent_xpid consistency, validity window, jurisdiction coverage (Layer 1), CAP tier coverage (Layer 2), operator_id non-null (Layer 3), then log acd_session_id bilaterally before granting access."
+> "I am implementing the Agent Compliance Disclosure (ACD) Protocol from draft-sato-soos-acd-02. ACD defines a machine-to-machine compliance handshake between a SOOS GEC and external resource providers. The GEC must expose a `/.well-known/soos-acd` endpoint over HTTPS (TLS 1.3 only). When a resource provider sends GET with Accept: application/soos-acd+json, the GEC must: (1) run the four-check sequence per KEE-1 §4.3 — manifest validity (GEC Manifest current per KIA-03 §5.4), policy currency (cedar_policy_hash computed fresh), KIA attestation (key not revoked per KIA-03 §8), XPID revocation (not in registry per KIA-03 §6.5); (2) on all four passing, generate ACD Record JSON, canonicalize per RFC 8785, sign as JWS per RFC 7515 using KIA private key, return HTTP 200 with Content-Type: application/soos-acd+json; (3) on any check failing, return HTTP 403 with JSON body {error: 'ACD_CHECK_FAILED', failed_check: <1-4>, acd_session_id, timestamp}. The ACD Record is a JSON object with three layers. Layer 1 (Legal Identity): acd_session_id (UUID v4, CSPRNG), agent_xpid, governing_law, primary_jurisdiction (ISO 3166-1), jurisdictions[] (each: jurisdiction_code, regulatory_regime[], ptd_endpoint), terms_of_use_uri, liability_scope, acd_validity_not_before, acd_validity_not_after (max 30d, default 24h). Layer 2 (Constitutional Compliance): cap_profile_id, cap_profile_hash (SHA-256 of CAP Profile JSON, computed fresh), prohibition_tier_summary {tier_0a, tier_0b, tier_1, tier_2}, gec_manifest_ref, cedar_policy_hash (SHA-256 of active Cedar Policy Set, computed immediately before signing), cap_enforcement_attestation, hem_status (ACTIVE|SUSPENDED|ESCALATION_IN_PROGRESS), ptd_endpoint. Layer 3 (Principal and Redress): operator_id, deployer_id (conditional), principal_hierarchy_summary, redress_uri, human_escalation_path (AVAILABLE|NOT_AVAILABLE), gar_audit_endpoint, gar_sar_ref (optional), aep_session_id (REQUIRED — identifier of the AEP session in progress at production time, distinct from acd_session_id since one AEP session MAY complete multiple handshakes), acd_timestamp, gec_signature (JWS detached), delegation_chain_depth (0=master, 1+=sub-agent), parent_kernel_id (conditional), mandate_scope_type (FULL|SLICE), mjwt_jti (REQUIRED — jti claim of the session MJWT). The GEC MUST log ALE-056 (ACD_QUERY_RECEIVED) on receipt and ALE-057 (ACD_RECORD_ISSUED) on issuance. GAR stores SHA-256(ACD Record body) in ALE-057, not the full record. Resource providers validate: JWS signature against KIA Party Registry, agent_xpid consistency, validity window, jurisdiction coverage (Layer 1), CAP tier coverage (Layer 2), operator_id non-null (Layer 3), then log acd_session_id bilaterally before granting access."
 
 **Key schema fields:**
 
@@ -66,6 +66,7 @@ Regulators may request ACD Records at any time via a human query (ALE-061: `ACD_
 | `operator_id` | L3 | String | REQUIRED | KIA identity of responsible legal entity |
 | `delegation_chain_depth` | L3 | Integer | REQUIRED | 0=master; 1+=sub-agent depth |
 | `mandate_scope_type` | L3 | Enum | REQUIRED | FULL or SLICE |
+| `aep_session_id` | L3 | UUID v4 | REQUIRED | AEP session this record was produced within; distinct from `acd_session_id` |
 | `gec_signature` | L3 | JWS | REQUIRED | Detached KIA signature over canonicalized record |
 
 **Minimal TypeScript GEC endpoint sketch:**
@@ -183,7 +184,7 @@ The compliance handshake is a simple HTTP exchange: resource provider sends `GET
 | 3 — KIA Attestation | Kernel's KIA signing key not in Revocation Registry (KIA-03 §8) | ALE-059, failed_check: 3 |
 | 4 — Revocation Status | Agent XPID not revoked (Revocation Registry or CAEP signal per KIA-03 §6.5) | ALE-059, failed_check: 4 |
 
-**Session caching rule:** once a handshake succeeds for a resource class within an AEP session, the resource provider MAY cache the ACD Record until `acd_validity_not_after`. A new AEP session always requires a new handshake. Resource providers with tighter freshness requirements (e.g., 1-hour max for high-risk financial resources) MUST re-query regardless of the record's validity window.
+**Session caching rule:** once a handshake succeeds for a resource class within an AEP session, the resource provider MAY cache the ACD Record until `acd_validity_not_after`, but MUST correlate the record's `aep_session_id` against the specific AEP session in progress — a record presented outside that session MUST be rejected, cached or not. A new AEP session always requires a new handshake. Resource providers with tighter freshness requirements (e.g., 1-hour max for high-risk financial resources) MUST re-query regardless of the record's validity window.
 
 **Resource provider validation sequence (6 steps):** (1) verify JWS signature against KIA Party Registry; (2) confirm `agent_xpid` matches the kernel queried; (3) check validity window; (4) confirm jurisdiction entry covers provider's jurisdiction; (5) inspect Layer 2 `prohibition_tier_summary` against compliance requirements, query `ptd_endpoint` for depth; (6) verify `operator_id` non-null. Log `acd_session_id` bilaterally before granting access.
 
@@ -213,12 +214,14 @@ Sub-agents carry the `jti` of their own mandate-slice MJWT (not the master's). A
 |---|---|---|
 | ALE-056 | `ACD_QUERY_RECEIVED` | Resource provider initiated handshake |
 | ALE-057 | `ACD_RECORD_ISSUED` | GEC generated and KIA-signed ACD Record |
-| ALE-058 | `ACD_VALIDATION_PASSED` | Resource provider validated successfully |
+| ALE-058 | `ACD_VALIDATION_PASSED` | Resource provider validated successfully; carries `confirmation_basis` (NOTIFIED / INFERRED) |
 | ALE-059 | `ACD_VALIDATION_FAILED` | Resource provider rejected ACD Record |
 | ALE-060 | `ACD_RECORD_EXPIRED` | Validity window elapsed |
 | ALE-061 | `ACD_HUMAN_QUERY` | Human-initiated disclosure request |
 | ALE-062 | `ACD_ACCESS_DENIED` | Resource access denied after ACD failure |
 | ALE-063 | `ACD_ESCALATION_TRIGGERED` | Validation result escalated to human review |
+
+ALE-058's `confirmation_basis` distinguishes a validation the resource provider actively reported (`NOTIFIED`) from one the GEC merely inferred from the absence of an ALE-059 failure within the access window (`INFERRED`). The distinction matters because that same silence is also produced by a resource provider that crashed, partitioned from the network, or denied access without notifying the GEC — an auditor reading the GAR record needs to be able to tell a confirmed pass from a guess.
 
 GAR logs the SHA-256 hash of the ACD Record (not the full record) for ALE-056 and ALE-057 — satisfying data minimization requirements under APPI Article 19 and GDPR Article 5(1)(c) while preserving tamper-evident audit verifiability.
 
@@ -265,9 +268,9 @@ No current IETF or W3C standard defines a machine-to-machine AI agent compliance
 
 **Spoofed ACD Record:** All ACD transport is over TLS (RFC 8446). Resource providers MUST verify `gec_signature` against the KIA attestation chain published in the Party Registry — not against any other key source. The `agent_xpid` in the record MUST match the XPID of the kernel queried.
 
-**ACD Record replay:** Resource providers MUST reject records where current time is after `acd_validity_not_after`. High-compliance deployments SHOULD use short validity windows (24 hours or less) and SHOULD bind ACD Records to the specific AEP session.
+**ACD Record replay:** Resource providers MUST reject records where current time is after `acd_validity_not_after`. Resource providers MUST also correlate the record's `aep_session_id` with the specific AEP session in progress and reject a record presented outside that context — this was previously a SHOULD checked against `acd_session_id` alone, but `acd_session_id` identifies only the handshake instance and can't distinguish a legitimate same-session cache hit from a cross-session replay; binding to `aep_session_id` closes that gap. High-compliance deployments SHOULD use short validity windows (24 hours or less).
 
-**Formal analysis status:** ACD-00 has not undergone formal security analysis. The KIA-signature and CSPRNG-based UUID generation requirements follow established cryptographic practice. Formal analysis is planned post-Vienna.
+**Formal analysis status:** ACD-02 has not undergone formal security analysis. The KIA-signature and CSPRNG-based UUID generation requirements follow established cryptographic practice. Formal analysis is planned post-Vienna.
 
 ---
 
