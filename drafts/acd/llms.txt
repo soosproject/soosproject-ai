@@ -1,8 +1,8 @@
 # SOOS — Agent Compliance Disclosure (ACD)
-# draft-sato-soos-acd-00
+# draft-sato-soos-acd-02
 # https://soosproject.ai/drafts/acd/llms.txt
 # Author: Tom Sato / MyAuberge K.K.
-# Last updated: 9 July 2026
+# Last updated: 7 September 2026
 
 ---
 
@@ -10,7 +10,7 @@
 
 ACD defines the machine-to-machine compliance handshake that a resource provider initiates before granting an AI agent access to a regulated resource class. The GEC produces a KIA-signed ACD Record — a three-layer JSON artifact covering legal identity, constitutional compliance posture, and principal hierarchy — which the resource provider validates before granting access. ACD is not a credential format (it is a compliance disclosure protocol), not an authorization protocol (it complements OAuth but addresses a different layer), and not a passive transparency document (it is a precondition for access, not a policy statement).
 
-ACD is the inbound complement to RGP (Resource Governance Protocol): RGP governs outbound capability discovery by agents; ACD governs inbound compliance verification by resource providers. Together they define the complete resource access governance flow for SOOS-governed agents. ACD-00 is the initial submission covering the ACD Record schema (§6), Architecture Overview (§5), and Security Considerations (§12). Sections 7–10 (Presentation Protocol, Trust Hierarchy, MJWT Binding, GAR Integration) are authored in Session 2.
+ACD is the inbound complement to RGP (Resource Governance Protocol): RGP governs outbound capability discovery by agents; ACD governs inbound compliance verification by resource providers. Together they define the complete resource access governance flow for SOOS-governed agents. ACD-02 is the current revision, integrating the ACD Record schema (§6), Architecture Overview (§5), Security Considerations (§12), and the Presentation Protocol, Trust Hierarchy, MJWT Binding, and GAR Integration sections (§7–§10) originally authored across two sessions.
 
 ---
 
@@ -65,7 +65,7 @@ The first layer of the ACD Record. Carries: `acd_session_id`, `agent_xpid`, `gov
 The second layer of the ACD Record. Carries: `cap_profile_id`, `cap_profile_hash` (SHA-256 of CAP Profile JSON), `prohibition_tier_summary` (object with `tier_0a`, `tier_0b`, `tier_1`, `tier_2` integer counts), `gec_manifest_ref`, `cedar_policy_hash` (SHA-256 of active Cedar policy bundle), `cap_enforcement_attestation` (URI), `hem_status` (ACTIVE | SUSPENDED | ESCALATION_IN_PROGRESS), `ptd_endpoint` (URI).
 
 **Layer 3 — Principal and Redress Layer:**
-The third layer of the ACD Record. Carries: `operator_id`, `deployer_id` (CONDITIONAL: required when deployer differs from operator), `principal_hierarchy_summary`, `redress_uri`, `human_escalation_path` (AVAILABLE | NOT_AVAILABLE), `gar_audit_endpoint`, `gar_sar_ref` (OPTIONAL), `acd_timestamp`, `gec_signature` (JWS detached), `delegation_chain_depth` (integer: 0=master, 1+=sub-agent), `parent_kernel_id` (CONDITIONAL: required when depth>=1), `mandate_scope_type` (FULL | SLICE).
+The third layer of the ACD Record. Carries: `operator_id`, `deployer_id` (CONDITIONAL: required when deployer differs from operator), `principal_hierarchy_summary`, `redress_uri`, `human_escalation_path` (AVAILABLE | NOT_AVAILABLE), `gar_audit_endpoint`, `gar_sar_ref` (OPTIONAL), `aep_session_id` (REQUIRED), `acd_timestamp`, `gec_signature` (JWS detached), `delegation_chain_depth` (integer: 0=master, 1+=sub-agent), `parent_kernel_id` (CONDITIONAL: required when depth>=1), `mandate_scope_type` (FULL | SLICE).
 
 **CAP Profile:**
 A signed artifact referencing the set of Cedar policies active in a given SOOS kernel deployment at a given time. Identified in the ACD Record by `cap_profile_id` and committed to by `cap_profile_hash`. Governed by CAP-RRS catalog versioning. The CAP Profile is the object that resource providers inspect (via `ptd_endpoint`) when they need to verify specific prohibition coverage.
@@ -83,7 +83,7 @@ Three-level trust structure: (1) Operator-declared trust level — encoded in th
 The ACD Record MUST reference the `jti` claim of the session MJWT governing the current AEP session. This binding ensures the compliance disclosure is bound to the mandate scope under which the agent is operating. Resource providers that validate both the ACD Record and the MJWT can confirm that the compliance posture declared matches the mandate authority in play. [Normative spec in §9, Session 2.]
 
 **ACD Authority Lifecycle Events:**
-Eight GAR ALE types defined by ACD: ALE-056 (ACD_QUERY_RECEIVED), ALE-057 (ACD_RECORD_ISSUED), ALE-058 (ACD_VALIDATION_PASSED), ALE-059 (ACD_VALIDATION_FAILED, includes failed_layer 1|2|3 and failed_field), ALE-060 (ACD_RECORD_EXPIRED), ALE-061 (ACD_HUMAN_QUERY), ALE-062 (ACD_ACCESS_DENIED), ALE-063 (ACD_ESCALATION_TRIGGERED). GAR logs SHA-256(ACD Record) for ALE-056 and ALE-057, not the full record (data minimization per APPI Article 19 and GDPR Article 5(1)(c)).
+Eight GAR ALE types defined by ACD: ALE-056 (ACD_QUERY_RECEIVED), ALE-057 (ACD_RECORD_ISSUED), ALE-058 (ACD_VALIDATION_PASSED, carries `confirmation_basis`: NOTIFIED | INFERRED), ALE-059 (ACD_VALIDATION_FAILED, includes failed_layer 1|2|3 and failed_field), ALE-060 (ACD_RECORD_EXPIRED), ALE-061 (ACD_HUMAN_QUERY), ALE-062 (ACD_ACCESS_DENIED), ALE-063 (ACD_ESCALATION_TRIGGERED). GAR logs SHA-256(ACD Record) for ALE-056 and ALE-057, not the full record (data minimization per APPI Article 19 and GDPR Article 5(1)(c)).
 
 **ACD Presentation Protocol (§7):**
 The machine-to-machine compliance handshake. Resource provider sends GET `/.well-known/soos-acd` with `Accept: application/soos-acd+json` over TLS 1.3 [RFC8446]. GEC executes four-check sequence (§7.4). On pass: generates ACD Record, canonicalizes per RFC 8785, signs as JWS per RFC 7515, returns HTTP 200 with `Content-Type: application/soos-acd+json`. On fail: HTTP 403 with JSON body `{error: "ACD_CHECK_FAILED", failed_check: <1-4>, acd_session_id, timestamp}`. ALE-056 logged on request receipt; ALE-057 on record issuance.
@@ -95,7 +95,7 @@ Four checks executed by the GEC before ACD Record issuance, in order. All must p
 Six steps in order: (1) verify `gec_signature` JWS against KIA Party Registry public key — no other key source permitted; (2) confirm `agent_xpid` matches the kernel queried; (3) check validity window — reject if current time outside `acd_validity_not_before`/`acd_validity_not_after`; (4) confirm jurisdiction entry covering provider's jurisdiction exists in `jurisdictions[]`; (5) inspect Layer 2 `prohibition_tier_summary` against compliance requirements; (6) verify `operator_id` non-null. MUST log `acd_session_id` bilaterally before granting access.
 
 **Session Caching Rule (§7.5):**
-After a successful handshake for a regulated resource class within an AEP session, resource provider MAY cache the ACD Record until `acd_validity_not_after`. New AEP session always requires new handshake. Provider's own freshness threshold may be shorter than the ACD Record validity. Cached ACD Record MUST NOT be shared with third parties. Structurally analogous to TLS session resumption.
+After a successful handshake for a regulated resource class within an AEP session, resource provider MAY cache the ACD Record until `acd_validity_not_after`, but MUST correlate the record's `aep_session_id` against the specific AEP session in progress — a record presented outside that session MUST be rejected regardless of cache state. New AEP session always requires new handshake. Provider's own freshness threshold may be shorter than the ACD Record validity. Cached ACD Record MUST NOT be shared with third parties. Structurally analogous to TLS session resumption.
 
 **ACD Trust Hierarchy (§8):**
 Three levels determined by GEC Manifest conformance level. STANDARD (KEE-1 L1/L2, OS keystore): general resource access. ELEVATED (KEE-1 L2, TEE + FROST, TEE attestation in GEC Manifest): financial data, personal data under APPI/GDPR. GOVERNMENT (KEE-1 L3, hardware attestation chain to deployment authority, 2-of-3 publisher key): government APIs, FIEA-regulated financial infrastructure. Trust level not an explicit ACD Record field — determined by resource provider from referenced GEC Manifest.
@@ -109,8 +109,14 @@ Third-party auditor with accredited credential. Scope: full GAR event stream for
 **mjwt_jti field (§9.1):**
 REQUIRED Layer 3 field added in Session 2. Value: the `jti` claim of the MJWT governing the current AEP session. GEC MUST populate from active MJWT at record generation time — no cached value. A revoked MJWT `jti` in the Revocation Registry MUST block ACD Record issuance (ALE-059, failed_check: 4). Resource providers holding the MJWT independently MUST verify `mjwt_jti` matches MJWT `jti` and that `mandate_scope_type` is consistent with MJWT scope. Sub-agents carry sub-agent MJWT `jti` (mandate slice), not master MJWT `jti`.
 
+**aep_session_id field (§6.3):**
+REQUIRED Layer 3 field. Value: the identifier of the AEP session in progress at ACD Record production time — the same identifier GAR logs as `session_id` per §10.2. Distinct from `acd_session_id`, which identifies only the handshake instance: one AEP session MAY complete multiple ACD handshakes against different resource providers, or re-handshake after cache expiry, each producing a different `acd_session_id` under the same `aep_session_id`. This is the field the Session Caching Rule (§7.5) and the replay defense (§12.4) bind a cached record to — without it, a resource provider has no field on the Record itself against which to check "is this still the same AEP session." Resource providers MUST correlate `aep_session_id` with the specific AEP session in progress and reject a record presented outside that context; this was previously a SHOULD checked against `acd_session_id` alone, which cannot distinguish a legitimate same-session cache hit from a cross-session replay.
+
 **GAR Logging Schema for ACD ALEs (§10.2):**
 Each ALE record carries: `ale_type` (ALE-056 through ALE-063), `ale_seq` (causal sequence number), `session_id`, `acd_session_id`, `timestamp` (kernel clock, KEE-1 P7), `prev_span_hash` (SHA-256 of preceding ALE, KEE-1 P7 WAL tamper evidence), plus ALE-specific mandatory fields. ALE-057 stores `SHA-256(ACD Record body)` only — not the full record (APPI Art.19 / GDPR Art.5(1)(c) data minimization).
+
+**ALE-058 confirmation_basis field:**
+Mandatory field on ALE-058 (ACD_VALIDATION_PASSED): NOTIFIED | INFERRED. NOTIFIED is logged only when the resource provider actively reported validation success. INFERRED is logged when the GEC infers success solely from the absence of an ALE-059 failure within the session's access window — an absence also produced by a resource provider that crashed, partitioned from the network, or silently denied access without notifying the GEC. The distinction lets an investigator reading the GAR record tell a confirmed pass from a guess; treating both as equivalent would let a non-response masquerade as a validated one.
 
 **Data Minimization for ACD ALEs (§10.3):**
 ALE-057: SHA-256 hash of ACD Record body only — full record retained locally and by resource provider but MUST NOT be written to GAR. ALE-056: `resource_provider_id` MUST NOT carry personal data beyond minimum identifier. ALE-061: `requester_id` carries credential identifier only — personal identity resolved from credential by Audit Principal's IdP, not stored in GAR.
@@ -163,7 +169,7 @@ The following drafts depend on this draft:
 
 ## SECTION 6 — Vienna / Datatracker Status
 
-Draft identifier: draft-sato-soos-acd-00
+Draft identifier: draft-sato-soos-acd-02
 Submission date: 13 July 2026 (post-KEE-1 completion; pre-Vienna)
 Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-acd/
 soosproject.ai page: https://soosproject.ai/drafts/acd
