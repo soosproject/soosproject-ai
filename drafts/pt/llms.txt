@@ -1,5 +1,5 @@
 # SOOS — Progressive Trust (PT)
-# draft-sato-soos-pt-03
+# draft-sato-soos-pt-04
 # https://soosproject.ai/drafts/pt/llms.txt
 # Author: Tom Sato / MyAuberge K.K.
 # Last updated: 2026-09-05
@@ -375,7 +375,7 @@ OAuth 2.0 token scopes: handle permission grant at issuance. PT
 
 ## SECTION 13 — Datatracker Status
 
-Draft identifier: draft-sato-soos-pt-03 (WIMSE security fix + citation currency over -02; see header note)
+Draft identifier: draft-sato-soos-pt-04 (editorial citation-currency bump over -03; see header note for -03's WIMSE security fix)
 Status: Active Individual Submission, IETF Datatracker
 Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-pt/
 Draft page: https://soosproject.ai/drafts/pt
