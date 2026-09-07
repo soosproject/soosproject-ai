@@ -8,7 +8,7 @@
 
 The Governed Remediation Protocol (GRP) specifies the normative remediation action set available to a SOOS governance kernel when agent execution encounters a governed failure condition. GRP defines four action classes — FALLBACK, RETRY, ESCALATE, ROLLBACK — with explicit authority boundaries that determine when each may proceed autonomously and when it must escalate to a human principal through the Human Escalation Mechanism (HEM).
 
-GRP is a coordination draft. It introduces no new cryptographic or identity primitives. It specifies the governed coordination of mechanisms already defined in the SOOS suite: the fallback boundary rule from RGP (DEC-RGP-08), the escalation protocol from HEM, the audit obligations from GAR, and the session state machine from AEP. This revision (-02) adds two mechanisms: artifact-level impact refinement (§9.4), which walks DAM's derived_from lineage graph transitively to scope a CONTENT_CORRECTION change event to the specific artifacts built from the corrected data; and a change-event replay defense (§16.6) that rejects a previously-admitted (publisher_id, event_id) pair resent within the same session.
+GRP is a coordination draft. It introduces no new cryptographic or identity primitives. It specifies the governed coordination of mechanisms already defined in the SOOS suite: the fallback boundary rule from RGP (DEC-RGP-08), the escalation protocol from HEM, the audit obligations from GAR, and the session state machine from AEP. This revision (-02) adds three mechanisms: artifact-level impact refinement (§9.4), which walks DAM's derived_from lineage graph transitively to scope a CONTENT_CORRECTION change event to the specific artifacts built from the corrected data; Remediation Outcome Verification (§11.7), which closes a gap where a FALLBACK or RETRY action could complete with a clean mechanical success record while the outcome the session actually needed still went undelivered, by checking the result against the session's own EOD and recording ALE-070 (GRP_REMEDIATION_VERIFIED); and a change-event replay defense (§16.6) that rejects a previously-admitted (publisher_id, event_id) pair resent within the same session.
 
 GRP closes the gap between prohibition detection and agent response. Without GRP, every SOOS deployment builds ad hoc remediation logic — ungoverned, unauditable, and bypassing principal sovereignty.
 
@@ -55,7 +55,7 @@ CAP (consent absent) → GRP-T5
         ↓
 GRP: publisher verify → impact assessment → Cedar tier → action class → DEC-RGP-08 (FALLBACK) → execute or HEM
         ↓ autonomous               ↓ HEM required
-  ALE-065..069                ALE-067 + HEM class → human decision → resume
+  ALE-065..070                ALE-067 + HEM class → human decision → resume
 ```
 
 GRP sits above RGP and AEP (receives their failure signals) and below HEM (routes escalation requests to it). GRP has no downstream dependents in the current SOOS suite — it is the terminal protocol for session failure response.
@@ -83,6 +83,8 @@ RETRY: Exponential backoff, minimum 1 second interval, ceiling from MJWT retry_p
 
 ROLLBACK: rollback_nonce session-scoped; must reference target ALE seq number; WAL verification required; ALE-068 before execution, ALE-069 on completion + HEM-HIGH-1 for human review.
 
+Remediation Outcome Verification (§11.7, new in -02): Applies to FALLBACK and RETRY only (ROLLBACK already forces human review; ESCALATE already is the human decision). After the action completes, the GEC checks the outcome against the session's own EOD and records ALE-070 (GRP_REMEDIATION_VERIFIED) with an outcome value from AEP's own vocabulary — MATCHED, PARTIAL, PLAN_B_MATCHED, or UNMATCHED — rather than a GRP-specific one, so a mid-session verification result is directly comparable to the session's eventual outcome. UNMATCHED forces ESCALATE at HEM-HIGH-1; PARTIAL escalates at HEM-PRE-2 unless the mandate's remediation_policy explicitly permits it.
+
 Cross-cluster: Pre-authorized in SACR propagation_scope. Each receiving GEC independently verifies SACR + KIA signature + performs own impact assessment. Failure → ALE-064 rejection_reason: "cross_cluster_authority_failure".
 
 Replay defense: session_nonce is fixed for the session's duration and cannot by itself distinguish a fresh event from a replay of one already admitted. The GEC additionally tracks every (publisher_id, event_id) pair admitted this session; a repeat is rejected as ALE-064 rejection_reason: "duplicate_event_id" before it re-enters impact assessment or triggers any action a second time.
@@ -91,7 +93,7 @@ Artifact-level refinement: for CONTENT_CORRECTION events carrying affected_da_id
 
 ## Section 4 — GAR ALE Types (new in this draft)
 
-GRP defines ALE-064 through ALE-069 as new GAR Audit Log Entry types:
+GRP defines ALE-064 through ALE-070 as new GAR Audit Log Entry types:
 
 ALE-064: GRP_EVENT_REJECTED
   Triggers: publisher verification failure, session nonce mismatch, duplicate event_id,
@@ -129,7 +131,14 @@ ALE-069: GRP_ROLLBACK_COMPLETED
   Key fields: event_id, target_ale_ref, rollback_nonce,
   rollback_status (SUCCESS/PARTIAL/FAILED), session_id, timestamp, prev_span_hash.
 
-Chain traceability: ALE-069 and the final resolution ALE MUST carry a reference to the initiating trigger ALE (e.g., RGP ALE-025 or CAP CEDAR_DENY ALE). Enables single-query trigger → attempts → outcome reconstruction.
+ALE-070: GRP_REMEDIATION_VERIFIED
+  New in -02. Trigger: post-action outcome check for FALLBACK or RETRY (§11.7).
+  Key fields: event_id, action_class (FALLBACK/RETRY), target_ale_ref,
+  outcome (MATCHED/PARTIAL/PLAN_B_MATCHED/UNMATCHED), session_id,
+  timestamp, prev_span_hash. UNMATCHED forces ESCALATE at HEM-HIGH-1;
+  PARTIAL escalates at HEM-PRE-2 unless remediation_policy permits it.
+
+Chain traceability: ALE-069, ALE-070, and the final resolution ALE MUST carry a reference to the initiating trigger ALE (e.g., RGP ALE-025 or CAP CEDAR_DENY ALE). Enables single-query trigger → attempts → outcome reconstruction.
 
 ## Section 5 — Dependency Graph
 
@@ -139,7 +148,7 @@ GRP depends on (normative):
 - draft-sato-soos-aep-04: session states (STALLED/ERROR), EOD fallback pre-declaration
 - draft-sato-soos-hem-07: all ESCALATE routing (HEM-HIGH-1, HEM-PRE-2, HEM-DS-1, HEM-LIM-1, HEM-CONSENT)
 - draft-sato-soos-cap-06: Cedar DENY trigger (GRP-T1), SUSPENDED state → ROLLBACK, consent failure (GRP-T5)
-- draft-sato-soos-gar-08: ALE-064 through ALE-069 consumer
+- draft-sato-soos-gar-08: ALE-064 through ALE-070 consumer
 - draft-sato-soos-mad-05: SACR propagation_scope, mandate scope validation (GRP-T4)
 - draft-sato-soos-idp-06: EOD fallback pre-declaration, P-TYPE-1 publisher registration
 - draft-sato-soos-kia-07: P-TYPE-1 signature verification, GEC integrity (P5, P2 via KEE-1)
@@ -152,7 +161,7 @@ GRP is consumed by: (no current SOOS drafts depend on GRP downstream)
 
 ## Section 6 — Implementation and Deployment Status
 
-Status: draft-sato-soos-grp-02, submitted to IETF Datatracker, September 2026. Restores artifact-level impact refinement (§9.4) and its supporting change_class/affected_da_id fields, which had been inadvertently dropped from an earlier revision's actual submission; extends the refinement to a transitive (not single-hop) derivation-graph walk; adds the change-event replay defense (§16.6); renames ALE-066 to GRP_MEDIATED_FALLBACK_ACTIVATED; and states the ALE-026/064/066 double-recording reconciliation from GRP's own side, not only RGP's.
+Status: draft-sato-soos-grp-02, prepared for IETF Datatracker submission, September 2026 (the live Datatracker copy as of this writing is still -01, which is missing §9.4). Restores artifact-level impact refinement (§9.4) and its supporting change_class/affected_da_id fields, which had been inadvertently dropped from an earlier revision's actual submission; extends the refinement to a transitive (not single-hop) derivation-graph walk; adds Remediation Outcome Verification (§11.7) and ALE-070 (GRP_REMEDIATION_VERIFIED); adds the change-event replay defense (§16.6); renames ALE-066 to GRP_MEDIATED_FALLBACK_ACTIVATED; and states the ALE-026/064/066 double-recording reconciliation from GRP's own side, not only RGP's.
 
 Reference implementation: Ponyhouse Farm (ponyhouse.myauberge.jp) serves as the reference supplier for the CAP-EXP FALLBACK use case in Appendix A. The ATP booking agent at MyAuberge K.K. is the GRP reference deployment for the FALLBACK and RETRY action classes.
 
