@@ -1,5 +1,5 @@
 # SOOS — Agent Compliance Disclosure (ACD)
-# draft-sato-soos-acd-02
+# draft-sato-soos-acd-03
 # https://soosproject.ai/drafts/acd/llms.txt
 # Author: Tom Sato / MyAuberge K.K.
 # Last updated: 7 September 2026
@@ -10,7 +10,7 @@
 
 ACD defines the machine-to-machine compliance handshake that a resource provider initiates before granting an AI agent access to a regulated resource class. The GEC produces a KIA-signed ACD Record — a three-layer JSON artifact covering legal identity, constitutional compliance posture, and principal hierarchy — which the resource provider validates before granting access. ACD is not a credential format (it is a compliance disclosure protocol), not an authorization protocol (it complements OAuth but addresses a different layer), and not a passive transparency document (it is a precondition for access, not a policy statement).
 
-ACD is the inbound complement to RGP (Resource Governance Protocol): RGP governs outbound capability discovery by agents; ACD governs inbound compliance verification by resource providers. Together they define the complete resource access governance flow for SOOS-governed agents. ACD-02 is the current revision, integrating the ACD Record schema (§6), Architecture Overview (§5), Security Considerations (§12), and the Presentation Protocol, Trust Hierarchy, MJWT Binding, and GAR Integration sections (§7–§10) originally authored across two sessions.
+ACD is the inbound complement to RGP (Resource Governance Protocol): RGP governs outbound capability discovery by agents; ACD governs inbound compliance verification by resource providers. Together they define the complete resource access governance flow for SOOS-governed agents. ACD-03 is the current revision, integrating the ACD Record schema (§6), Architecture Overview (§5), Security Considerations (§12, five attack vectors including Compliance Handshake Volumetric Abuse), and the Presentation Protocol, Trust Hierarchy, MJWT Binding, and GAR Integration sections (§7–§10) originally authored across two sessions.
 
 ---
 
@@ -89,7 +89,7 @@ Eight GAR ALE types defined by ACD: ALE-056 (ACD_QUERY_RECEIVED), ALE-057 (ACD_R
 The machine-to-machine compliance handshake. Resource provider sends GET `/.well-known/soos-acd` with `Accept: application/soos-acd+json` over TLS 1.3 [RFC8446]. GEC executes four-check sequence (§7.4). On pass: generates ACD Record, canonicalizes per RFC 8785, signs as JWS per RFC 7515, returns HTTP 200 with `Content-Type: application/soos-acd+json`. On fail: HTTP 403 with JSON body `{error: "ACD_CHECK_FAILED", failed_check: <1-4>, acd_session_id, timestamp}`. ALE-056 logged on request receipt; ALE-057 on record issuance.
 
 **Four-Check Sequence (§7.4):**
-Four checks executed by the GEC before ACD Record issuance, in order. All must pass. Normative specification in [I-D.sato-soos-kee] §4.3. Check 1 (Manifest Validity): `gec_manifest_ref` references current, unrevoked GEC Manifest per KIA-03 §5.4 staleness window. Check 2 (Policy Currency): `cedar_policy_hash` computed over currently active Cedar Policy Set immediately before signing — no precomputed or stale hash. Check 3 (KIA Attestation): GEC KIA signing key not in Revocation Registry per KIA-03 §8. Check 4 (XPID Revocation): agent XPID not in Revocation Registry and no CAEP revocation signal received per KIA-03 §6.5. Failure at any check → ALE-059 with `failed_check: <1-4>`.
+Four checks executed by the GEC before ACD Record issuance, in order. All must pass. Normative specification in [I-D.sato-soos-kee] §4.3. Check 1 (Manifest Validity): `gec_manifest_ref` references current, unrevoked GEC Manifest per KIA-07 §5.4 staleness window. Check 2 (Policy Currency): `cedar_policy_hash` computed over currently active Cedar Policy Set immediately before signing — no precomputed or stale hash. Check 3 (KIA Attestation): GEC KIA signing key not in Revocation Registry per KIA-07 §8. Check 4 (XPID Revocation): agent XPID not in Revocation Registry and no CAEP revocation signal received per KIA-07 §6.5. Failure at any check → ALE-059 with `failed_check: <1-4>`.
 
 **Resource Provider Validation Procedure (§7.3):**
 Six steps in order: (1) verify `gec_signature` JWS against KIA Party Registry public key — no other key source permitted; (2) confirm `agent_xpid` matches the kernel queried; (3) check validity window — reject if current time outside `acd_validity_not_before`/`acd_validity_not_after`; (4) confirm jurisdiction entry covering provider's jurisdiction exists in `jurisdictions[]`; (5) inspect Layer 2 `prohibition_tier_summary` against compliance requirements; (6) verify `operator_id` non-null. MUST log `acd_session_id` bilaterally before granting access.
@@ -122,6 +122,7 @@ Mandatory field on ALE-058 (ACD_VALIDATION_PASSED): NOTIFIED | INFERRED. NOTIFIE
 ALE-057: SHA-256 hash of ACD Record body only — full record retained locally and by resource provider but MUST NOT be written to GAR. ALE-056: `resource_provider_id` MUST NOT carry personal data beyond minimum identifier. ALE-061: `requester_id` carries credential identifier only — personal identity resolved from credential by Audit Principal's IdP, not stored in GAR.
 
 
+**acd_required:**
 A boolean field in the RGP capability declaration. When `acd_required: true`, the resource provider requires an ACD compliance handshake before granting agent access to that resource class. This field is the trigger that initiates the ACD Presentation Protocol.
 
 ---
@@ -134,7 +135,7 @@ A boolean field in the RGP capability declaration. When `acd_required: true`, th
 
 **FIEA (Japan) Article 2** (Financial Instruments and Exchange Act): ACD provides the machine-verifiable compliance declaration for AI agents accessing financial institution APIs. The JP jurisdiction entry in Layer 1 carries FIEA in `regulatory_regime`.
 
-**Applicable AI governance guidelines**: Mapped to the `AI_AGENT_OPERATION` Purpose Code in the MJWT Purpose Code Registry (draft-sato-soos-mjwt-02). ACD Layer 1 `regulatory_regime` array for JP references `AI-Agent-Governance-v1` to satisfy applicable AI governance requirements.
+**Applicable AI governance guidelines**: Mapped to the `AI_AGENT_OPERATION` Purpose Code in the MJWT Purpose Code Registry (draft-sato-soos-mjwt-06). ACD Layer 1 `regulatory_regime` array for JP references `AI-Agent-Governance-v1` to satisfy applicable AI governance requirements.
 
 **NIST AI RMF 1.0**: ACD Layer 1 supports a US jurisdiction entry with `regulatory_regime` referencing NIST AI RMF. The ACD Record provides the transparency and accountability properties specified in NIST AI RMF Govern 1.1 and Manage 4.2.
 
@@ -151,34 +152,34 @@ A boolean field in the RGP capability declaration. When `acd_required: true`, th
 ## SECTION 5 — Normative SOOS Cross-References
 
 This draft depends on:
-- KIA (draft-sato-soos-kia-03) — XPID derivation for `agent_xpid`; KIA private key for `gec_signature`; KIA attestation chain for resource provider signature verification; KIA Party Registry for XPID cross-check; Revocation Registry (§8) for four-check Checks 3 and 4; GEC Manifest staleness window (§5.4) for Check 1; CAEP propagation (§6.5) for Check 4
-- KEE-1 (draft-sato-soos-kee-00) — §4.3 is the normative four-check sequence specification that ACD §7.4 references; session caching rule (§7.5) analogous to TLS session resumption described in KEE-1
-- CAP (draft-sato-soos-cap-04) — prohibition enforcement that ACD Record Layer 2 references
-- CAP-RRS (draft-sato-soos-cap-rrs-02) — CAP Profile production and catalog versioning; `cap_profile_id` governance
-- AEP (draft-sato-soos-aep-02) — session lifecycle within which ACD handshakes occur; XPID binding from Party Registry
-- MJWT (draft-sato-soos-mjwt-02) — session MJWT `jti` referenced by ACD Layer 3 `mjwt_jti` (REQUIRED); mandate scope; sub-agent MJWT slice for §9.3 sub-agent binding
-- GAR (draft-sato-soos-gar-03) — audit logging for ALE-056 through ALE-063; `prev_span_hash` WAL tamper evidence per KEE-1 P7; Session Block Merkle protection for ACD audit trail; data minimization (SHA-256 hash-only for ALE-057)
-- HEM (draft-sato-soos-hem-05) — invoked when ALE-063 (ACD_ESCALATION_TRIGGERED) fires
-- RGP (draft-sato-soos-rgp-00) — `acd_required` field in capability declarations triggers the ACD handshake
+- KIA (draft-sato-soos-kia-07) — XPID derivation for `agent_xpid`; KIA private key for `gec_signature`; KIA attestation chain for resource provider signature verification; KIA Party Registry for XPID cross-check; Revocation Registry (§8) for four-check Checks 3 and 4; GEC Manifest staleness window (§5.4) for Check 1; CAEP propagation (§6.5) for Check 4
+- KEE-1 ([SOOS-KEE], permanent local-only spec, not submitted to the IETF Datatracker) — §4.3 is the normative four-check sequence specification that ACD §7.4 references; session caching rule (§7.5) analogous to TLS session resumption described in KEE-1
+- CAP (draft-sato-soos-cap-06) — prohibition enforcement that ACD Record Layer 2 references
+- CAP-RRS (draft-sato-soos-cap-rrs-04) — CAP Profile production and catalog versioning; `cap_profile_id` governance
+- AEP (draft-sato-soos-aep-04) — session lifecycle within which ACD handshakes occur; XPID binding from Party Registry
+- MJWT (draft-sato-soos-mjwt-06) — session MJWT `jti` referenced by ACD Layer 3 `mjwt_jti` (REQUIRED); mandate scope; sub-agent MJWT slice for §9.3 sub-agent binding
+- GAR (draft-sato-soos-gar-08) — audit logging for ALE-056 through ALE-063; `prev_span_hash` WAL tamper evidence per KEE-1 P7; Session Block Merkle protection for ACD audit trail; data minimization (SHA-256 hash-only for ALE-057)
+- HEM (draft-sato-soos-hem-07) — invoked when ALE-063 (ACD_ESCALATION_TRIGGERED) fires
+- RGP (draft-sato-soos-rgp-02) — `acd_required` field in capability declarations triggers the ACD handshake
 
 The following drafts depend on this draft:
-- KEE-1 (draft-sato-soos-kee-00) — §4.3 P3 "ACD four-check sequence" requires ACD to be defined; KEE-1 references ACD §7.4
-- AOP (draft-sato-soos-aop-00) — multi-agent orchestration; master agent ACD posture must be verifiable before delegated sub-agent access
+- KEE-1 ([SOOS-KEE]) — §4.3 P3 "ACD four-check sequence" requires ACD to be defined; KEE-1 references ACD §7.4
+- AOP (draft-sato-soos-aop-03) — multi-agent orchestration; master agent ACD posture must be verifiable before delegated sub-agent access
 
 ---
 
 ## SECTION 6 — Vienna / Datatracker Status
 
-Draft identifier: draft-sato-soos-acd-02
+Draft identifier: draft-sato-soos-acd-03
 Submission date: 13 July 2026 (post-KEE-1 completion; pre-Vienna)
 Datatracker: https://datatracker.ietf.org/doc/draft-sato-soos-acd/
 soosproject.ai page: https://soosproject.ai/drafts/acd
 llms.txt canonical path: https://soosproject.ai/drafts/acd/llms.txt
 
-Draft stats (Session 2 complete): 1,998 lines / 86KB. All sections complete: §1–§6 (Session 1), §7 ACD Presentation Protocol, §8 ACD Trust Hierarchy, §9 ACD-to-MJWT Binding, §10 GAR Integration, Appendix A Japan FSA Inspection (Session 2). Pre-submission editorial action: update §6.4 Complete ACD Record Example to include `mjwt_jti` field (OQ-ACD-DRAFT-03).
+Draft stats (as of -03): 2,098 lines / 91KB. All sections complete: §1–§6 (Session 1), §7 ACD Presentation Protocol, §8 ACD Trust Hierarchy, §9 ACD-to-MJWT Binding, §10 GAR Integration, Appendix A Japan FSA Inspection (Session 2). Version -02 added the aep_session_id Layer 3 field and its replay-defense binding (§6.3, §7.5, §12.4), the confirmation_basis field on ALE-058 (§10.1), the Compliance Handshake Volumetric Abuse security consideration (§12.5), and migrated the KEE-1 citation to the non-versioned [SOOS-KEE] form. Version -03 is a citations-and-formatting-only revision: six sibling-draft citations updated to current live versions (AEP-04, GAR-08, KIA-07, MJWT-06, RGP-02, SOV-04), and the Table of Contents — which had omitted §12.5 in the -02 submission — corrected to list it.
 
-Target IETF meeting: IETF 126 Vienna (July 18–24, 2026) — live document at time of Vienna conversations.
+IETF 126 Vienna (July 18–24, 2026) has already taken place; ACD was a live document during Vienna conversations.
 
-Vienna WG engagement targets:
+Vienna WG engagement targets (as discussed at IETF 126):
 - WIMSE (Workload Identity in Multi-System Environments): ACD-to-MJWT binding (§9) as workload credential compliance surface; `mjwt_jti` as the binding field; sub-agent MJWT slice chain verification (§9.3)
 - RATS (Remote Attestation Procedures): ACD four-check sequence (§7.4 → KEE-1 §4.3) as structured attestation verification procedure; Check 1 manifest validity as RATS attestation result check
