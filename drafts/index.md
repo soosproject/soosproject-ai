@@ -5,11 +5,11 @@ description: All 19 SOOS IETF Internet-Drafts, organised by stack layer. Each dr
 
 # SOOS draft suite
 
-Nineteen interdependent protocol specifications (17 IETF Standards Track + 2 self-published) defining what agentic AI systems need to operate reliably at scale. Each draft addresses a distinct layer. Each stands alone and can be adopted independently. **Apache 2.0. No commercial version.**
+Twenty-one interdependent protocol specifications (19 IETF Standards Track + 2 self-published) defining what agentic AI systems need to operate reliably at scale. Each draft addresses a distinct layer. Each stands alone and can be adopted independently. **Apache 2.0. No commercial version.**
 
 | | | |
 |---|---|---|
-| **17** Class A (Datatracker) | **2** Class B (self-published) | **IETF 126** Vienna, July 2026 |
+| **19** Class A (Datatracker) | **2** Class B (self-published) | [**Events**](/events) — talks & seminars |
 
 ---
 
@@ -61,7 +61,7 @@ All drafts, schemas, conformance test suites, and reference implementations are 
 |---|---|---|
 | [KIA](/drafts/kia) | Kernel Identity and Attestation | Hardware-rooted identity for the GEC — three-level attestation hierarchy (L1/L2/L3), FROST threshold signing, XPID cross-principal correlation |
 | [SOV](/drafts/sov) | Sovereign Object | The universal binding target for agent authority — causally ordered, policy-governed, stateful, with tamper-evident event stream |
-| [MJWT](/drafts/mjwt) | Mandate JWT | Signed credential establishing agent authority ceiling — SO-scoped claims, consent_scope, seven-dimensional narrowing property |
+| [MJWT](/drafts/mjwt) | Mandate JWT | Signed credential establishing agent authority ceiling — SO-scoped claims, consent_scope, eight-dimensional narrowing property |
 | [IDP](/drafts/idp) | Intent Declaration Primitive | Cryptographically committed pre-action declaration — intake_endorsement, PD-EOD, confidence calibration, RETRY_CONTINUATION |
 | [HEM](/drafts/hem) | Human Escalation Mechanism | When and how an agent escalates to a human — ten interaction classes, Human Readiness Score, INV-HEM-01 Surfacing Obligation |
 | [AEP](/drafts/aep) | Agent Execution Protocol | The governed execution loop: SENSE, REASON, PLAN, ACT, OBSERVE — XPID binding, EOD, STALLED state, OTel mapping |
@@ -87,10 +87,10 @@ All drafts, schemas, conformance test suites, and reference implementations are 
 
 | Draft | Title | What it does |
 |---|---|---|
-| [ACD](/drafts/acd) | Agent Compliance Disclosure | Pre-session compliance handshake — two-layer ACD Record, jurisdiction/regulatory regime, KIA-signed, GAR-anchored |
+| [ACD](/drafts/acd) | Agent Compliance Disclosure | Pre-session compliance handshake — three-layer ACD Record, jurisdiction/regulatory regime, KIA-signed, GAR-anchored |
 | [PEER](/drafts/peer) | Cross-Principal Agent Communication | Cross-principal transaction governance — PEER Transaction Record, ptxn_id, mutual attestation handshake, cross-GAR audit correlation |
 | [RGP](/drafts/rgp) | Resource Governance Protocol | Pre-session resource discovery — two-stage discovery, eight capability classes, four trust levels, DEC-RGP-08 autonomous fallback test |
-| [GRP](/drafts/grp) | Governed Remediation Protocol | Normative failure response — FALLBACK/RETRY/ESCALATE/ROLLBACK action classes, publisher identity model, ALE-064 through ALE-069 |
+| [GRP](/drafts/grp) | Governed Remediation Protocol | Normative failure response — FALLBACK/RETRY/ESCALATE/ROLLBACK action classes, publisher identity model, ALE-064 through ALE-070 |
 | [AOP](/drafts/aop) | Agent Orchestration Protocol | Multi-agent mission governance — Mission Plan SO, Mission Status SO, Assignment Primitive, 14 mission lifecycle ALEs |
 | [DAM](/drafts/dam) | Data Artifact Management | Data governance layer — KGA/AGA/EIA taxonomy, three-tier write authority model, GAR provenance interface |
 

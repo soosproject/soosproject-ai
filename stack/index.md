@@ -31,7 +31,7 @@ The stack reads bottom-up. Execution infrastructure is the foundation. Governanc
 
 **SOV — Sovereign Object** defines the governed object model — the universal binding target for agent authority. Every MJWT is scoped to a Sovereign Object instance. Every GEC-mediated state transition acts on an SO. Authorization in SOOS is object-level, not API-level.
 
-**MJWT — Mandate JWT** is the signed credential establishing an agent's authority ceiling for a session. Extends JWT with SO-scoped claims (so_id, state_constraint, session_limit), consent_scope binding, seven-dimensional narrowing property for delegation chains, and algorithm integrity enforcement. The agent cannot mint its own permissions.
+**MJWT — Mandate JWT** is the signed credential establishing an agent's authority ceiling for a session. Extends JWT with SO-scoped claims (so_id, state_constraint, session_limit), consent_scope binding, eight-dimensional narrowing property for delegation chains, and algorithm integrity enforcement. The agent cannot mint its own permissions.
 
 **IDP — Intent Declaration Primitive** defines the structured pre-action commitment an agent submits before each execution. Intake_endorsement produces a GEC-signed Endorsed EOD before session start. PD-EOD derives governed EODs from natural-language prompts. Every agent action is traceable to a committed, tamper-evident intent record.
 
@@ -71,13 +71,13 @@ The stack reads bottom-up. Execution infrastructure is the foundation. Governanc
 
 *The operational governance surface.*
 
-**ACD — Agent Compliance Disclosure** defines the pre-session compliance handshake: a two-layer KIA-signed ACD Record carrying jurisdiction, regulatory regime, CAP profile ID (Layer 1) and prohibition tier summary, consent scope (Layer 2). Resource providers can gate access on ACD presentation without accessing the agent's full GAR audit chain.
+**ACD — Agent Compliance Disclosure** defines the pre-session compliance handshake: a three-layer KIA-signed ACD Record carrying governing law and jurisdiction (Layer 1 — Legal Identity), CAP profile ID and prohibition tier summary (Layer 2 — Constitutional Compliance), and operator/principal hierarchy with redress endpoint (Layer 3 — Principal and Redress). Resource providers can gate access on ACD presentation without accessing the agent's full GAR audit chain.
 
 **PEER — Cross-Principal Agent Communication** governs transactions between two AI agents operating under independent mandate roots. PEER Transaction Record (PTR) and ptxn_id (jointly-derived Cross-Principal Transaction ID) link two independent GAR audit chains at the moment of a cross-principal transaction. Addresses the Provenance Paradox: honor-system self-certification fails adversarially.
 
 **RGP — Resource Governance Protocol** enables pre-session governed resource discovery: two-stage discovery (Stage 1 well-known URI fingerprint, Stage 2 full governance envelope), eight capability classes, four trust levels, Resource Map Sovereign Object, and DEC-RGP-08 (three-condition autonomous fallback test). Authorization precedes assignment.
 
-**GRP — Governed Remediation Protocol** specifies the normative failure response set: FALLBACK (DEC-RGP-08), RETRY (MJWT ceiling), ESCALATE (HEM routing), ROLLBACK (reversible undo). Three publisher types for change event ingestion. Six new GAR ALE types (ALE-064–069). Every failure decision is governed, auditable, and reconstructable from a single GAR query.
+**GRP — Governed Remediation Protocol** specifies the normative failure response set: FALLBACK (DEC-RGP-08), RETRY (MJWT ceiling), ESCALATE (HEM routing), ROLLBACK (reversible undo). Three publisher types for change event ingestion. Seven new GAR ALE types (ALE-064–070), including Remediation Outcome Verification (ALE-070). Every failure decision is governed, auditable, and reconstructable from a single GAR query.
 
 **AOP — Agent Orchestration Protocol** governs multi-agent mission decomposition: Mission Plan SO (pre-declared sub-goal DAG), Mission Status SO (live execution state), Assignment Primitive (SACR-backed kernel handoff), three re-planning authority levels (NONE/BOUNDED/AUTONOMOUS), and 14 mission lifecycle ALE types (ALE-042–055). AOP is the highest-layer protocol in the suite.
 

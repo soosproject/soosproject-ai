@@ -18,7 +18,7 @@ export default defineConfig({
       { text: 'Stack', link: '/stack' },
       { text: 'Agent Identity', link: '/identity' },
       { text: 'Gap List', link: '/gaps' },
-      { text: 'Vienna', link: '/vienna' },
+      { text: 'Events', link: '/events' },
       { text: 'Government', link: '/government' },
       { text: 'About', link: '/about' },
       { text: 'Build', link: 'https://soosproject.com' },
@@ -35,10 +35,10 @@ export default defineConfig({
         {
           text: 'Layer 1 — Identity & Execution',
           items: [
-            { text: 'KIA - Kernel Attestation', link: '/drafts/kia' },
+            { text: 'KIA - Kernel Identity and Attestation', link: '/drafts/kia' },
             { text: 'SOV - Sovereign Object', link: '/drafts/sov' },
             { text: 'MJWT - Mandate JWT', link: '/drafts/mjwt' },
-            { text: 'IDP - Intent Declaration', link: '/drafts/idp' },
+            { text: 'IDP - Intent Declaration Primitive', link: '/drafts/idp' },
             { text: 'HEM - Human Escalation', link: '/drafts/hem' },
             { text: 'AEP - Agentic Execution', link: '/drafts/aep' },
           ]
@@ -53,7 +53,7 @@ export default defineConfig({
         {
           text: 'Layer 3 — Policy, Trust & Privacy',
           items: [
-            { text: 'CAP - AI Prohibition', link: '/drafts/cap' },
+            { text: 'CAP - Constitutional AI Protocol', link: '/drafts/cap' },
             { text: 'CAP-RRS - Regulation Schema', link: '/drafts/cap-rrs' },
             { text: 'CAP-RRS-JP - Japan LRI Profile (Class B)', link: '/drafts/cap-rrs-jp' },
             { text: 'PT - Progressive Trust', link: '/drafts/pt' },

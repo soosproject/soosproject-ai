@@ -7,7 +7,7 @@ description: How SOOS supports government AI governance objectives — machine-r
 
 AI agents can read laws and regulations as text and understand what they say. But understanding is not the same as following. For an AI agent to reliably follow a regulation — not just interpret it, but be bound by it at the moment it acts — the regulation needs to be expressed in a form the agent's operating system enforces as a rule.
 
-SOOS provides that system. The **Constitutional Authority Protocol (CAP)** is the mechanism by which laws and regulations become runtime rules that every governed AI agent must follow, with a complete audit record proving it did. Critically, each jurisdiction encodes and enforces its own rules — SOOS does not impose a single global standard. A Japanese AI agent follows Japanese law. A European AI agent follows EU law. An agent operating across borders follows the rules of each jurisdiction it operates in, and can tell you exactly which rules it is following and why.
+SOOS provides that system. The **Constitutional AI Protocol (CAP)** is the mechanism by which laws and regulations become runtime rules that every governed AI agent must follow, with a complete audit record proving it did. Critically, each jurisdiction encodes and enforces its own rules — SOOS does not impose a single global standard. A Japanese AI agent follows Japanese law. A European AI agent follows EU law. An agent operating across borders follows the rules of each jurisdiction it operates in, and can tell you exactly which rules it is following and why.
 
 ---
 
@@ -199,6 +199,6 @@ For government and regulatory enquiries, collaboration on jurisdiction-specific 
 
 Raise technical questions at the [soosproject GitHub](https://github.com/soosproject/soos-drafts).
 
-Review the full specifications at [soosproject.ai/drafts](/drafts). The drafts most relevant to government audiences: [CAP-RRS](/drafts/cap-rrs) — Regulation Record schema · [CAP](/drafts/cap) — Constitutional AI Prohibitions · [GAR](/drafts/gar) — Governed Action Record.
+Review the full specifications at [soosproject.ai/drafts](/drafts). The drafts most relevant to government audiences: [CAP-RRS](/drafts/cap-rrs) — Regulation Record schema · [CAP](/drafts/cap) — Constitutional AI Protocol · [GAR](/drafts/gar) — Governed Action Record.
 
 *All SOOS specifications are published as IETF Internet-Drafts under Apache 2.0 — free to use, implement, and build upon.*

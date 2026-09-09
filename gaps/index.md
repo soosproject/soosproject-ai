@@ -47,7 +47,7 @@ The IETF has produced excellent work. SCITT, WIMSE, CAEP, SSF, VDAF, OAuth 2.1, 
 
 **Risk:** Without a verifiable intent declaration, there is no basis for authorization decisions, audit trail construction, or revocation targeting. Agents act with implicit scope that cannot be verified by downstream systems, auditors, or the agents themselves.
 
-**Draft:** [IDP — Intent Declaration Profile](/drafts/idp) defines the signed intent object that must accompany every agent action: mandatory fields for principal, scope, target resource, expiry, and reasoning mode. Model-agnostic by design.
+**Draft:** [IDP — Intent Declaration Primitive](/drafts/idp) defines the signed intent object that must accompany every agent action: mandatory fields for principal, scope, target resource, expiry, and reasoning mode. Model-agnostic by design.
 
 ---
 
@@ -57,7 +57,7 @@ The IETF has produced excellent work. SCITT, WIMSE, CAEP, SSF, VDAF, OAuth 2.1, 
 
 **Risk:** Without kernel attestation, audience binding for delegation tokens is meaningless — there is no verifiable identity for the "audience." Audit records cannot be tied to a specific, verifiable execution environment, making forensic analysis unreliable.
 
-**Draft:** [KIA — Kernel Instance Attestation](/drafts/kia) provides hardware-rooted attestation for the Governed Execution Context. KIA produces the canonical GEC instance identifier used by MJWT for audience binding and by GAR for audit record anchoring.
+**Draft:** [KIA — Kernel Identity and Attestation](/drafts/kia) provides hardware-rooted attestation for the Governed Execution Context. KIA produces the canonical GEC instance identifier used by MJWT for audience binding and by GAR for audit record anchoring.
 
 ---
 
@@ -101,7 +101,7 @@ The IETF has produced excellent work. SCITT, WIMSE, CAEP, SSF, VDAF, OAuth 2.1, 
 
 **Risk:** Hard behavioral limits are implemented as ad-hoc guardrails at the application layer, duplicated per deployment, inconsistently maintained, and not verifiable by external auditors or regulators. There is no standard basis for certifying that a governed agent cannot perform a prohibited action.
 
-**Draft:** [CAP — Constitutional AI Prohibitions](/drafts/cap) defines a five-tier prohibition hierarchy compiled at runtime into Cedar policy. Tier 0-A prohibitions are absolute and kernel-enforced. Tiers 1–3 are operator-configurable within declared jurisdiction.
+**Draft:** [CAP — Constitutional AI Protocol](/drafts/cap) defines a five-tier prohibition hierarchy compiled at runtime into Cedar policy. Tier 0-A prohibitions are absolute and kernel-enforced. Tiers 1–3 are operator-configurable within declared jurisdiction.
 
 ---
 
@@ -133,7 +133,7 @@ The IETF has produced excellent work. SCITT, WIMSE, CAEP, SSF, VDAF, OAuth 2.1, 
 
 **Risk:** When an agent session is revoked mid-execution, there is no standard for what state the session enters, how partial work is recorded, or what triggers recovery. Revocation leaves agents in undefined states that cannot be audited or remediated consistently.
 
-**Draft:** [MAD §3.6](/drafts/mad) defines the full agent session revocation and recovery lifecycle, including the R-1 through R-6 trigger taxonomy, the three-layer revocation model, AGENT_IN_RECOVERY blocking, and the CAEP/SSF profile for revocation events.
+**Draft:** [MAD §3.6](/drafts/mad) defines the full agent session revocation and recovery lifecycle, including the R-1 through R-7 trigger taxonomy, the three-layer revocation model, AGENT_IN_RECOVERY blocking, and the CAEP/SSF profile for revocation events.
 
 ---
 
@@ -227,7 +227,7 @@ The IETF has produced excellent work. SCITT, WIMSE, CAEP, SSF, VDAF, OAuth 2.1, 
 
 **Risk:** Agent revocation events are transmitted in ad-hoc formats incompatible with CAEP receivers. SSF infrastructure built for user session management cannot be reused for agent mandate management, requiring parallel infrastructure investment.
 
-**Draft:** [MAD §3.6.2](/drafts/mad) defines the normative CAEP/SSF profile for agent revocation events, mapping the R-1 through R-6 trigger taxonomy to CAEP event types and defining the propagation semantics for each.
+**Draft:** [MAD §3.6.2](/drafts/mad) defines the normative CAEP/SSF profile for agent revocation events, mapping the R-1 through R-7 trigger taxonomy to CAEP event types and defining the propagation semantics for each.
 
 ---
 

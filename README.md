@@ -17,7 +17,7 @@ npm run docs:dev
 /                   Home
 /drafts             All 19 drafts index
 /drafts/hem         HEM — Human Escalation Mechanism
-/drafts/cap         CAP — Constitutional Authority Protocol
+/drafts/cap         CAP — Constitutional AI Protocol
 /drafts/cap-rrs     CAP-RRS — Regulation Record Schema
 /drafts/idp         IDP — Intent Declaration Primitive
 /drafts/aep         AEP — Agentic Execution Protocol
@@ -39,7 +39,7 @@ npm run docs:dev
 /drafts/kee2        KEE-2/DIST — Distributed Governance Runtime (Class B)
 /gaps               Gap List
 /stack              SOOS Stack overview
-/vienna             Vienna IETF 126 engagement
+/events             Talks, seminars, and engagement opportunities
 /government         Government engagement
 /about              About the SOOS Project
 ```
