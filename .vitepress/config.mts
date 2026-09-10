@@ -20,6 +20,7 @@ export default defineConfig({
       { text: 'Gap List', link: '/gaps' },
       { text: 'Events', link: '/events' },
       { text: 'Government', link: '/government' },
+      { text: 'Security Review', link: '/security' },
       { text: 'About', link: '/about' },
       { text: 'Build', link: 'https://soosproject.com' },
     ],
