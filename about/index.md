@@ -32,7 +32,7 @@ We say this plainly because we think it matters: if we are writing specification
 ### Tom Sato
 *Founding author · Primary protocol architect*
 
-Bio coming soon.
+https://www.linkedin.com/in/tomsato/
 
 ---
 
