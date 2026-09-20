@@ -51,7 +51,7 @@ The IDP establishes intent. The MJWT establishes the ceiling — the maximum aut
 
 ### "Who is actually governing you?"
 
-**Answer: KIA — Kernel Identity Attestation**
+**Answer: KIA — Kernel Identity and Attestation**
 
 This is the question no existing identity framework answers — and it is the most important one.
 
@@ -59,11 +59,11 @@ OAuth identifies the client. SPIFFE identifies the workload. Neither identifies 
 
 Without kernel identity, a resource provider cannot verify that the governance system the agent claims to be running under is actually running, actually enforcing, and actually the system it claims to be. A malicious process can impersonate a governance kernel. A misconfigured deployment can claim compliance it does not have.
 
-KIA closes this gap with three components:
+KIA closes this gap with a hardware-rooted trust chain:
 
-- **The GEC Identity Key (GIK)** — a keypair generated inside the kernel at initialization, never exported, used to sign all GAR audit records
-- **A three-level attestation hierarchy** — L1 software attestation, L2 sidecar attestation, L3 hardware TEE (TPM / SGX / TrustZone)
-- **The Attestation Manifest** — a signed document binding the kernel's identity to its configuration, its active CAP policy set, and its compliance profile hash
+- **A hardware root** — a TPM or HSM backing an operator-held root keypair, generated and held outside the kernel
+- **An Attestation Certificate** — the operator signs the GEC's own keypair fingerprint at deployment, binding the kernel's identity to that hardware root
+- **The GEC Manifest** — a signed document binding the kernel's identity to its configuration, its active CAP policy set, and its compliance profile hash, signed by the GEC's own keypair
 
 The canonical SOOS distinction: **WIMSE identifies the workload. KIA identifies the governor.**
 
@@ -116,25 +116,26 @@ The `acd_session_id` in the ACD Record becomes the bilateral correlation key —
 
 Identity is not a one-time check at session start. An agent's authority can become invalid mid-session — the human principal withdraws consent, the operator terminates the deployment, the kernel detects a governance violation, or a parent agent is revoked and the cascade propagates to all its children.
 
-SOOS specifies seven revocation trigger classes in MAD, each with a defined authority for who may initiate it and a normative completion state:
+SOOS specifies eight revocation trigger classes in MAD, each with a defined completion-authority path and a normative completion state:
 
 | Trigger | Condition | Continuation authority |
 |---|---|---|
-| R-1 | Human principal revocation | Human principal required |
-| R-2 | Operator revocation | Operator with principal notification |
-| R-3 | Kernel governance violation | Kernel (automatic) |
-| R-4 | GEC compromise detected | Human principal required |
-| R-5 | Mandate expiry | Automatic — no action needed |
-| R-6 | Cascade from parent agent revocation | Inherits from parent trigger |
-| R-7 | DEADLOCK — cluster coordinator detects unresolvable state | Kernel (automatic, with deadlock_timeout) |
+| R-1 | CAP Tier 0-A violation | Human principal required |
+| R-2 | Scope boundary exceeded at execution time | Human principal required |
+| R-3 | Non-response to a governance signal | Operator may issue |
+| R-4 | Irreversible action threshold reached | Human principal required |
+| R-5 | Scheduled rotation | Operator may issue |
+| R-6 | Operator override | Operator may issue |
+| R-7 | DEADLOCK — cluster coordinator detects unresolvable state | Human principal required |
+| R-8 | Compromise — mandate or credential integrity suspected broken | Human principal required |
 
 Every revocation produces one of three completion states — **CLEAN** (all actions completed or rolled back within mandate), **PARTIAL** (some actions completed, state recorded), or **UNKNOWN** (kernel could not determine completion state). UNKNOWN is always treated as PARTIAL for audit purposes. A revoked session can never produce a false "clean completion" record.
 
-**The CAEP connection.** When an agent's authority is revoked, resource providers that are already in an active session with that agent need to know immediately — they cannot wait for a token to expire. SOOS GAR produces CAEP-compatible Shared Signals Framework events on every R-1 through R-7 trigger. A resource provider subscribed to the agent's SSF stream receives a signed revocation event carrying the trigger class, the completion state, and the `acd_session_id` that correlates back to the bilateral audit record.
+**Cascade is a behavior, not a trigger of its own.** Any of R-1 through R-8 can cascade to descendant mandates in the delegation tree — a parent's revocation doesn't wait for a child session to notice independently. A delegation tree cannot survive the revocation of its root.
+
+**The CAEP connection.** When an agent's authority is revoked, resource providers that are already in an active session with that agent need to know immediately — they cannot wait for a token to expire. SOOS GAR produces CAEP-compatible Shared Signals Framework events on every R-1 through R-8 trigger. A resource provider subscribed to the agent's SSF stream receives a signed revocation event carrying the trigger class, the completion state, and the `acd_session_id` that correlates back to the bilateral audit record.
 
 This is direct complementarity with Atul Tulshibagwale's CAEP work at CrowdStrike. CAEP specifies how to propagate continuous access evaluation signals. SOOS specifies what governance events trigger those signals and what state they carry. The two specifications work together at the interface between agent governance and resource provider security.
-
-The narrowing property applies to revocation too: when a parent agent is revoked (R-1, R-2, R-4), all child mandates issued under it are automatically revoked in cascade (R-6). A delegation tree cannot survive the revocation of its root.
 
 → [draft-sato-soos-mad](https://soosproject.ai/drafts/mad)
 
@@ -160,7 +161,7 @@ Human principal
             │    └─ resource provider verifies KIA attestation chain
             │         └─ "I trust the governor, not just the agent"
             │
-            └─ revocation (R-1 through R-7)
+            └─ revocation (R-1 through R-8)
                  │
                  ├─ kernel records CLEAN / PARTIAL / UNKNOWN completion in GAR
                  │
@@ -204,6 +205,8 @@ SOOS builds on and complements the identity standards the community is already w
 
 **SCITT** — GAR's Merkle anchoring is structurally aligned with SCITT's transparent ledger model.
 
+**RATS** — KIA is a domain-specific Attester and Evidence profile under RFC 9334: the GEC plays the Attester role, and the GEC Manifest is RATS Evidence. See the [full RATS architecture checklist](https://soosproject.ai/rats) for the complete mapping, including where it's still open.
+
 The OpenID Foundation's October 2025 whitepaper ([arXiv:2510.25819](https://arxiv.org/abs/2510.25819)) correctly identifies the problems: auditability gap, scalable consent, recursive delegation, trustworthy autonomy. SOOS is the runtime layer that closes them. Several of the whitepaper's authors are part of the Vienna engagement — we see this as a collaborative relationship, not a competitive one.
 
 ---
@@ -229,10 +232,9 @@ The OpenID Foundation's October 2025 whitepaper ([arXiv:2510.25819](https://arxi
     "resource_bound": "SMALL"
   },
   "kia_attestation": {
-    "level": "L2",
+    "kernel_keypair_fingerprint": "sha256:def456...",
     "cap_profile_id": "myauberge-appi-profile-v1",
-    "cap_profile_hash": "sha256:abc123...",
-    "gik_fingerprint": "sha256:def456..."
+    "cap_profile_hash": "sha256:abc123..."
   }
 }
 ```
@@ -269,7 +271,7 @@ Agent identity in SOOS is not a credential. It is a provenance chain.
 | [KIA](https://soosproject.ai/drafts/kia) | "Who governs you?" — kernel attestation chain | Datatracker |
 | [CAP](https://soosproject.ai/drafts/cap) | "What are you prohibited from doing?" — constitutional layer | Datatracker |
 | [ACD](https://soosproject.ai/drafts/acd) | "Can you prove it?" — compliance disclosure on demand | Outline complete; post-Vienna |
-| [MAD](https://soosproject.ai/drafts/mad) | "What happens when it changes?" — revocation (R-1–R-7), cascade, CAEP propagation; narrowing on sub-agents | Datatracker |
+| [MAD](https://soosproject.ai/drafts/mad) | "What happens when it changes?" — revocation (R-1–R-8), cascade, CAEP propagation; narrowing on sub-agents | Datatracker |
 | [GAR](https://soosproject.ai/drafts/gar) | Tamper-evident proof of every action and every revocation event | Datatracker |
 
 ---
