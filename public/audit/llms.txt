@@ -1,0 +1,20 @@
+# AI Audit Reference Architecture
+
+> A vendor-neutral, open reference architecture for post-hoc AI agent accountability. Independent work — not backed by, or dependent on, any IETF working group, or on the SOOS project it happens to be hosted alongside. Submitted to the IETF as draft-sato-agent-accountability-refarch-01.
+
+Defines seven ordered stages and two branch conditions for producing, protecting, and verifying accountability records for autonomous AI agent actions. Motivated directly by the July 2026 Hugging Face incident, in which sandboxed evaluation agents were found to have built tooling to substitute their own tool-call execution records. Designed to be directly implementable today using only already-published standards, independent of any single company's stack.
+
+## Docs
+
+- [Overview](https://soosproject.ai/audit/): Why this architecture exists, what it provides, and the three ways in.
+- [Technical Overview](https://soosproject.ai/audit/reference-architecture): The seven stages and two branch conditions explained for engineers building agent runtimes, with a minimum-viable implementation checklist and an honest account of what remains unsolved.
+- [Getting Started](https://soosproject.ai/audit/developer-guide): A runnable TypeScript worked example for first-time implementers, and a gap-check against real production failures for teams that already have an audit or signing system in place.
+
+## Specification
+
+- [IETF Internet-Draft](https://datatracker.ietf.org/doc/draft-sato-agent-accountability-refarch/): draft-sato-agent-accountability-refarch-01, the normative specification. Where this differs from the docs above, the Internet-Draft is authoritative.
+
+## Optional
+
+- [Worked example source](https://soosproject.ai/audit-example.ts): The complete, runnable TypeScript file referenced in the Getting Started guide.
+- [Contact](https://www.linkedin.com/in/tomsato/): Tom Sato, the author.
