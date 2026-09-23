@@ -31,6 +31,7 @@ export default defineConfig({
       { text: 'Audit', link: '/audit' },
       { text: 'About', link: '/about' },
       { text: 'Build', link: 'https://soosproject.com' },
+      { text: '日本語', link: 'https://soosproject.com/ja/' },
     ],
     sidebar: {
       '/drafts/': [
