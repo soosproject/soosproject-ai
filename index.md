@@ -14,6 +14,9 @@ hero:
     - theme: alt
       text: SOOS Stack
       link: /stack
+    - theme: alt
+      text: "東京セミナー 10/1（日本語）"
+      link: https://soosproject.com/ja/
 features:
   - title: "The IETF foundation is solid. Agentic AI moved faster than anyone expected."
     details: "SCITT, WIMSE, CAEP, SSF, VDAF are excellent standards for a world of services and APIs. Nobody designed them for autonomous agents acting on consequential objects: contracts, financial instructions, bookings, medical records. That is not a criticism. It is simply where the technology went next, faster than anyone anticipated. We wrote the narrowest possible specifications to fill those gaps, building on existing IETF work wherever it fits."
@@ -36,7 +39,7 @@ features:
 
 ## Better control means better software.
 
-Today, every team building with AI agents solves the same problems from scratch  Ehow to keep agents on task, how to stop them when something goes wrong, how to know what they actually did. SOOS solves those problems once, at the right layer, as open standards anyone can use.
+Today, every team building with AI agents solves the same problems from scratch — how to keep agents on task, how to stop them when something goes wrong, how to know what they actually did. SOOS solves those problems once, at the right layer, as open standards anyone can use.
 
 An agent with a signed intent declaration can safely be given wider scope. An agent with progressive trust accumulation earns authorization based on its actual track record. An agent with a complete execution record is debuggable in minutes, not days. The engineering properties and the operational properties are the same properties.
 

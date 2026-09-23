@@ -18,7 +18,13 @@ export default defineConfig({
       { text: 'Stack', link: '/stack' },
       { text: 'Agent Identity', link: '/identity' },
       { text: 'Gap List', link: '/gaps' },
-      { text: 'Events', link: '/events' },
+      {
+        text: 'Events',
+        items: [
+          { text: 'All Events', link: '/events' },
+          { text: '東京セミナー 10/1（日本語）', link: 'https://soosproject.com/ja/' },
+        ]
+      },
       { text: 'Government', link: '/government' },
       { text: 'Security Review', link: '/security' },
       { text: 'RATS', link: '/rats' },

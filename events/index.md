@@ -28,6 +28,8 @@ A look at how SOOS's governance kernel model applies to real deployments, with a
 
 [Register on Peatix →](https://peatix.com/event/5174746)
 
+日本語のご案内ページ：[SOOS エージェンティックAI OS セミナー（東京） →](https://soosproject.com/ja/)
+
 ---
 
 ## Past
